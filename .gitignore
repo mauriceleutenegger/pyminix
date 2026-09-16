@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+*~
+.DS_Store
+# per-machine unit configuration; see config/units.example.toml
+config/units.toml
+# earlier untrusted prototypes, kept on disk only; see legacy/README.md
+legacy/

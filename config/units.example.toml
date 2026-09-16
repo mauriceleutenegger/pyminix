@@ -1,0 +1,28 @@
+# Mini-X unit configuration.
+#
+# Copy to config/units.toml or ~/.config/minix/units.toml.
+#
+# watt_max_w is REQUIRED per unit and must be 4.0 or 10.0, taken from the
+# unit's hardware documentation. It cannot be read from the device (§2.1).
+# If you are unsure, use 4.0: over-stating the rating permits over-driving
+# the tube; under-stating it only costs flux (§6.1.1).
+
+[units."01300036"]
+watt_max_w = 10.0
+source     = "hardware documentation, verified 2026-08-13"
+# hv_max_kv and hv_factor are derived from the serial number (§2.1).
+# Override only with a documented reason.
+
+[safety]
+safety_margin_w   = 0.050   # absolute, as in the reference (§6.1.1)
+err_test_delay_s  = 1.75    # range fault debounce (§6.4); was 7 cycles
+interlock_clear_s = 0.75    # delay before controls re-enable (§7.3); was 3 cycles
+monx_timeout_s    = 1.0     # tube-ready must assert within this after enabling (§7.2)
+tol_coarse        = 0.10    # range-check tolerances (§6.4)
+tol_fine          = 0.05
+
+[polling]
+gpio_hz    = 10.0   # interlock, MONX, enable readback
+adc_hz     = 2.0    # HV and current monitors
+temp_hz    = 0.2    # DS1722; 12-bit conversion is slow
+display_hz = 1.0

@@ -1,0 +1,12 @@
+name: minix
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pyftdi>=0.55
+  - pyside6>=6.8
+  - tomli-w>=1.0
+  - libusb
+  - hatchling
+  - pytest>=8
+  - pip
