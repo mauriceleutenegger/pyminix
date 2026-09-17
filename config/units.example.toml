@@ -26,3 +26,8 @@ gpio_hz    = 10.0   # interlock, MONX, enable readback
 adc_hz     = 2.0    # HV and current monitors
 temp_hz    = 0.2    # DS1722; 12-bit conversion is slow
 display_hz = 1.0
+
+[logging]
+directory = "~/minix_logs"   # run records and the application log; relative paths
+                             # are relative to this file
+sample_hz = 1.0              # run-record rows per second (plus one per state change)

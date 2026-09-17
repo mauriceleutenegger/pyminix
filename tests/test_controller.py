@@ -234,9 +234,15 @@ def test_energize_adjusts_and_reports(session, clock, sim, rec):
 
 
 def test_deenergize(on, clock, sim, rec):
+    run(on, clock, 2)
+    assert on.status().kv is not None
     on.deenergize()
     assert on.state is State.IDLE
     assert rec.last("hv_off")
+    status = on.status()                       # no readings from before the switch
+    assert (status.kv, status.ua, status.power_mw, status.band) == (None, None, None, None)
+    run(on, clock, 0.6)
+    assert on.status().kv < 1
     assert (sim.hv_dac, sim.current_dac) == (0, 0) and not sim.hv_enabled
     run(on, clock, 10)                         # HV-off tests start after 7 s
     status = on.status()

@@ -146,6 +146,30 @@ class NullListener:
         pass
 
 
+class FanOut:
+    """Passes everything to several listeners; one failing does not affect the others."""
+
+    def __init__(self, *listeners: Listener):
+        self._listeners = listeners
+
+    def status(self, status: Status) -> None:
+        for listener in self._listeners:
+            _call_listener(listener.status, status)
+
+    def event(self, event: Event) -> None:
+        for listener in self._listeners:
+            _call_listener(listener.event, event)
+
+
+def _call_listener(method: Callable[[Any], None], arg: Any) -> None:
+    # A listener must never disturb the controller: an exception here could
+    # otherwise abort a plan mid-way.
+    try:
+        method(arg)
+    except Exception:
+        log.exception("listener %r failed", method)
+
+
 TransportFactory = Callable[[str], Transport]
 
 
@@ -230,7 +254,8 @@ class Session:
         self._next_poll["temp"] = now + FIRST_TEMPERATURE_DELAY_S
         log.info("connected: %s (rating source: %s)", unit.describe(), unit.source or "unknown")
         self._event(Level.INFO, "connected", unit.describe(), serial=serial,
-                    watt_max_w=unit.watt_max_w)
+                    watt_max_w=unit.watt_max_w, rating_source=unit.source,
+                    safety_margin_w=unit.safety_margin_w)
         self._publish()
 
     def disconnect(self) -> None:
@@ -683,9 +708,11 @@ class Session:
         self._publish()
 
     def _hv_switched(self, now: float) -> None:
+        # Readings from before the switch no longer describe the tube.
         if self._range is not None:
             self._range.hv_switched(now)
         self._range_status = None
+        self._kv = self._ua = None
         self._reset_averages()
 
     def _reset_averages(self) -> None:
@@ -702,10 +729,10 @@ class Session:
         event = Event(self._clock(), level, kind, message, data)
         log.log({Level.INFO: logging.INFO, Level.WARNING: logging.WARNING,
                  Level.ERROR: logging.ERROR}[level], "%s: %s", kind, message)
-        self._listener.event(event)
+        _call_listener(self._listener.event, event)
 
     def _publish(self) -> None:
-        self._listener.status(self.status())
+        _call_listener(self._listener.status, self.status())
 
     def _reset(self) -> None:
         self._state = State.DISCONNECTED

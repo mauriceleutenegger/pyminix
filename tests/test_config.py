@@ -4,7 +4,7 @@ import pytest
 
 from minix import protocol as p
 from minix.config import (
-    ConfigError, PollingConfig, SafetyConfig, UnitConfig, UnitNotConfigured,
+    ConfigError, LoggingConfig, PollingConfig, SafetyConfig, UnitConfig, UnitNotConfigured,
     load_settings, save_unit, serial_number_value,
 )
 
@@ -66,7 +66,14 @@ def test_example_config_loads():
     assert "hardware documentation" in unit.source
     assert settings.safety == SafetyConfig()
     assert settings.polling == PollingConfig()
+    assert settings.logging == LoggingConfig(Path.home() / "minix_logs", 1.0)
     assert settings.path == EXAMPLE
+
+
+def test_relative_log_directory_is_relative_to_the_file(tmp_path):
+    path = tmp_path / "units.toml"
+    path.write_text('[logging]\ndirectory = "runs"\n')
+    assert load_settings(path).logging.directory == tmp_path / "runs"
 
 
 def test_unknown_unit_has_no_default_rating():
@@ -88,6 +95,8 @@ def test_no_file_means_defaults_and_no_units(monkeypatch, tmp_path):
     ('[units."01300036"]\nwatt_max_w = 4.0\nhv_max_kv = 60\n', "unknown keys"),
     ('[safety]\nrange_tolerence = 0.1\n', "range_tolerence"),
     ('[polling]\nadc_hz = 0\n', "positive"),
+    ('[logging]\nsample_hz = -1\n', "positive"),
+    ('[logging]\nfolder = "x"\n', "unknown keys"),
     ('[units\n', "cannot read"),
     ('[safety]\nsafety_margin_w = "a lot"\n', "could not convert"),
 ])

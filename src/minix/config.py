@@ -6,7 +6,7 @@ so must be configured (§6.1.1). There is no default rating: a unit without
 one cannot be opened.
 
 Settings is the configuration file (see config/units.example.toml): one
-entry per serial number, plus safety timings and polling rates.
+entry per serial number, plus safety timings, polling rates and logging.
 """
 
 from __future__ import annotations
@@ -146,6 +146,15 @@ class PollingConfig:
     display_hz: float = 1.0
 
 
+DEFAULT_LOG_DIRECTORY = Path.home() / "minix_logs"
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    directory: Path = DEFAULT_LOG_DIRECTORY
+    sample_hz: float = 1.0          # run-record rows per second
+
+
 @dataclass(frozen=True)
 class UnitEntry:
     watt_max_w: float
@@ -158,6 +167,7 @@ class Settings:
     safety_margin_w: float = SAFETY_MARGIN_W
     safety: SafetyConfig = SafetyConfig()
     polling: PollingConfig = PollingConfig()
+    logging: LoggingConfig = LoggingConfig()
     path: Path | None = None
 
     def unit(self, serial: str) -> UnitConfig:
@@ -204,6 +214,7 @@ def load_settings(path: Path | None = None) -> Settings:
             safety_margin_w=margin,
             safety=SafetyConfig(**{k: float(v) for k, v in safety.items()}),
             polling=PollingConfig(**{k: float(v) for k, v in data.get("polling", {}).items()}),
+            logging=_logging_config(data.get("logging", {}), path),
             path=path,
         )
     except (TypeError, ValueError) as exc:
@@ -212,10 +223,24 @@ def load_settings(path: Path | None = None) -> Settings:
         raise ConfigError(f"{path}: {exc}") from exc
     for serial in units:
         settings.unit(serial)       # validate every entry now, not at connect time
-    for name, value in vars(settings.polling).items():
+    for name, value in [*vars(settings.polling).items(),
+                        ("sample_hz", settings.logging.sample_hz)]:
         if not (math.isfinite(value) and value > 0):
-            raise ConfigError(f"{path}: polling.{name} must be positive")
+            raise ConfigError(f"{path}: {name} must be positive")
     return settings
+
+
+def _logging_config(section: dict, config_path: Path) -> LoggingConfig:
+    unknown = set(section) - {"directory", "sample_hz"}
+    if unknown:
+        raise ConfigError(f"{config_path}: logging: unknown keys {sorted(unknown)}")
+    directory = LoggingConfig.directory
+    if "directory" in section:
+        directory = Path(str(section["directory"])).expanduser()
+        if not directory.is_absolute():
+            directory = config_path.parent / directory
+    return LoggingConfig(directory=directory,
+                         sample_hz=float(section.get("sample_hz", LoggingConfig.sample_hz)))
 
 
 def save_unit(path: Path, serial: str, watt_max_w: float, source: str) -> None:
