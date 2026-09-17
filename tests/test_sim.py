@@ -7,7 +7,7 @@ from minix.device import (
     HvEnableError, InterlockOpenError, MiniX, NotInitializedError, TemperatureError,
     decode_temperature_c,
 )
-from minix.sim import SimTransport
+from minix.sim import SimFaults, SimHarness, SimTransport
 from minix.transport import TransportError
 
 
@@ -331,3 +331,37 @@ def test_temperature_encoding_round_trip():
                                     (27.3, 12, 27.25), (-10.3, 8, -11.0)]:
         reg = _encode_temperature(celsius, bits)
         assert decode_temperature_c(reg >> 8, reg & 0xFF) == expected
+
+
+# --- harness -----------------------------------------------------------------
+
+def test_harness_applies_faults_to_new_simulators():
+    harness = SimHarness(settle_tau_s=0.05, monx_delay_s=0.02)
+    harness.set_fault("interlock_closed", False)
+    harness.set_fault("tube_never_ready", True)
+    sim = harness.create("01300036")
+    assert harness.current is sim
+    assert not sim.interlock_closed and sim.monx_delay_s == 1e9
+    assert sim.settle_tau_s == 0.05
+
+
+def test_harness_applies_changes_to_the_current_simulator():
+    harness = SimHarness(monx_delay_s=0.02)
+    sim = harness.create("01300036")
+    for name in SimFaults.names():
+        harness.set_fault(name, not getattr(SimFaults(), name))
+    assert (sim.interlock_closed, sim.monx_delay_s, sim.settle_tau_s,
+            sim.stuck_enable_readback, sim.fail_io) == (False, 1e9, 1e9, p.HV_EN_BOTH, True)
+    for name in SimFaults.names():
+        harness.set_fault(name, getattr(SimFaults(), name))
+    assert (sim.interlock_closed, sim.monx_delay_s, sim.settle_tau_s,
+            sim.stuck_enable_readback, sim.fail_io) == (True, 0.02, 0.3, None, False)
+
+
+def test_harness_rejects_unknown_faults():
+    with pytest.raises(AttributeError):
+        SimHarness().set_fault("gremlins", True)
+
+
+def test_every_fault_has_a_label():
+    assert set(SimFaults.LABELS) == set(SimFaults.names())

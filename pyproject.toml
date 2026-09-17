@@ -15,10 +15,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-qt>=4.4"]
+
+[project.scripts]
+minix-gui = "minix.ui.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/minix"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+qt_api = "pyside6"

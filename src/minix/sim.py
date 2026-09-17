@@ -37,6 +37,7 @@ import math
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, fields
 
 from . import protocol as p
 from .mpsse import Command, split
@@ -432,6 +433,68 @@ class SimTransport:
     def _check_open(self) -> None:
         if self._closed:
             raise TransportError("simulated device is closed")
+
+
+@dataclass
+class SimFaults:
+    """Operator-controlled conditions for the simulator panel."""
+
+    interlock_closed: bool = True
+    tube_never_ready: bool = False
+    supply_stuck: bool = False
+    enables_stuck_on: bool = False
+    usb_failure: bool = False
+
+    LABELS = {
+        "interlock_closed": "Interlock closed",
+        "tube_never_ready": "Tube never ready",
+        "supply_stuck": "Supply stuck at 0",
+        "enables_stuck_on": "Enable readback stuck on",
+        "usb_failure": "USB failure",
+    }
+
+    @classmethod
+    def names(cls) -> list[str]:
+        return [f.name for f in fields(cls)]
+
+
+class SimHarness:
+    """Creates simulated controllers with the current SimFaults applied.
+
+    set_fault() applies a change to the current simulator immediately and
+    to every one created later, so the panel and the simulator never
+    disagree across reconnects. create() runs on the controller's worker
+    thread, set_fault() on the GUI thread; both only assign attributes.
+    """
+
+    def __init__(self, **sim_options):
+        self._options = sim_options
+        defaults = SimTransport(**sim_options)
+        self._normal_monx_delay_s = defaults.monx_delay_s
+        self._normal_settle_tau_s = defaults.settle_tau_s
+        self.faults = SimFaults()
+        self.current: SimTransport | None = None
+
+    def create(self, serial: str) -> SimTransport:
+        sim = SimTransport(serial, **self._options)
+        self._apply(sim)
+        self.current = sim
+        return sim
+
+    def set_fault(self, name: str, value: bool) -> None:
+        if name not in SimFaults.names():
+            raise AttributeError(f"unknown simulator fault {name!r}")
+        setattr(self.faults, name, value)
+        if self.current is not None:
+            self._apply(self.current)
+
+    def _apply(self, sim: SimTransport) -> None:
+        f = self.faults
+        sim.interlock_closed = f.interlock_closed
+        sim.monx_delay_s = 1e9 if f.tube_never_ready else self._normal_monx_delay_s
+        sim.settle_tau_s = 1e9 if f.supply_stuck else self._normal_settle_tau_s
+        sim.stuck_enable_readback = p.HV_EN_BOTH if f.enables_stuck_on else None
+        sim.fail_io = f.usb_failure
 
 
 def _trailing_bits(counts: int) -> int:

@@ -477,6 +477,7 @@ def test_lost_device(on, clock, sim, rec):
     run(on, clock, 0.2)
     status = on.status()
     assert status.state is State.FAULT and not status.connected
+    assert status.interlock_closed is None and status.enables_on is None
     assert "device_lost" in rec.kinds()
     on.clear_fault()
     assert on.state is State.DISCONNECTED
@@ -529,6 +530,19 @@ def test_polling_rates(session, clock, sim):
     run(session, clock, 10)
     assert counts["gpio"] == pytest.approx(100, abs=3)    # 10 Hz
     assert counts["adc"] == pytest.approx(40, abs=3)      # two channels at 2 Hz
+
+
+def test_monitors_are_read_in_fault(session, clock, sim):
+    connect(session, clock)
+    sim.monx_delay_s = 1e9
+    session.energize(30, 100, session.interlock_epoch)
+    assert session.state is State.FAULT
+    assert session.status().kv is None
+    run(session, clock, 1)
+    status = session.status()
+    assert status.kv is not None and status.kv < 30     # decaying toward zero
+    run(session, clock, 5)
+    assert session.status().kv < 1
 
 
 def test_fault_state_does_not_spin(session, clock, sim):

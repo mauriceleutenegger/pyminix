@@ -79,6 +79,9 @@ class State(enum.Enum):
 
 
 HV_ACTIVE = frozenset({State.ENERGIZING, State.ON, State.CHANGING})
+# States in which the monitors and temperature are polled between commands.
+# In FAULT they show whether the tube has really gone to zero.
+MONITORED = frozenset({State.IDLE, State.ON, State.FAULT})
 
 
 class Level(enum.Enum):
@@ -376,7 +379,7 @@ class Session:
                 if self._state is State.ON and not self._interlock_closed:
                     self._event(Level.WARNING, "hv_off", "interlock opened: switching HV off")
                     self._deenergize_now()
-            if self._state in (State.IDLE, State.ON):
+            if self._state in MONITORED:
                 if now >= self._next_poll["adc"]:
                     self._poll_monitors()
                     polled = True
@@ -396,7 +399,7 @@ class Session:
         if self._dev is None:
             return IDLE_TICK_S
         polls = ["gpio"]
-        if self._state in (State.IDLE, State.ON):
+        if self._state in MONITORED:
             polls += ["adc", "temp"]
         due = min(self._next_poll[name] for name in polls) - self._clock()
         return min(max(0.0, due), self._gpio_period())
@@ -676,7 +679,6 @@ class Session:
         self._hv_switched(self._clock())
         if not confirmed:
             message += "; HV enables could not be confirmed clear: check the tube physically"
-        log.error("fault: %s", message)
         self._fault = message
         self._set_state(State.FAULT)
         self._event(Level.ERROR, "fault", message)
@@ -688,9 +690,9 @@ class Session:
         self._dev = None
         if not confirmed:
             message += "; HV enables could not be confirmed clear: check the tube physically"
-        log.error("device lost: %s", message)
         self._fault = message
         self._gpio = None
+        self._interlock_closed = None      # unknown without a device
         self._set_state(State.FAULT)
         self._event(Level.ERROR, "device_lost", message)
 

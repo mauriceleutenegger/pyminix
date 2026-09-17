@@ -12,7 +12,7 @@ source (e.g. "§9.2") point to protocol.md.
 | Path | Contents |
 |---|---|
 | `src/minix/` | The package. `transport.py`/`device.py` know MPSSE but not safety; `policy/` is pure functions with no I/O; `controller.py` owns the device thread; `ui/` knows nothing about the protocol. |
-| `tools/` | Standalone hardware scripts. `probe.py` is read-only; `adcsweep.py --enable-hv` **energizes the tube**. |
+| `tools/` | Standalone hardware scripts. `device_check.py`, `ds1722_probe.py` and `probe.py` never enable HV; `adcsweep.py --enable-hv` **energizes the tube**. |
 | `tests/` | pytest suite. Uses a fake transport and the simulator (`minix.sim`); never touches hardware. |
 | `config/` | `units.example.toml`. Copy to `units.toml` (git-ignored) or `~/.config/minix/units.toml`. |
 | `legacy/` | Earlier prototypes, git-ignored and kept only on disk. **Not trustworthy — do not import or run.** |
@@ -29,8 +29,22 @@ All dependencies, including libusb, come from conda-forge via
 `--no-deps` keeps pip from resolving anything. Keep the dependency lists in
 `environment.yml` and `pyproject.toml` in sync.
 
+## Running
+
+    minix-gui --sim           # simulated controller, with a fault-injection panel
+    minix-gui                 # real hardware
+    minix-gui --config PATH   # a specific units.toml
+
+`python -m minix` is equivalent. The configuration is read from
+`~/.config/minix/units.toml`, then `config/units.toml`; see
+`config/units.example.toml`. Run records and `minix.log` go to
+`~/minix_logs/` unless `[logging] directory` says otherwise. In simulation
+mode a rating entered in the dialog is kept in memory only.
+
 ## Power rating
 
 The unit's power rating (4 W or 10 W) **cannot be read from the device** (§2.1).
-It must be entered in the unit config from the hardware documentation. The
-software refuses to open a unit whose rating is not configured.
+It must come from the unit's label or documentation. On first connection to
+an unknown unit the GUI asks for it, defaulting to the safe 4 W, and stores it
+in the configuration file with its source; the controller refuses to open a
+unit without a rating.

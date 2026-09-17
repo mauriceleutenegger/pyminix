@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
 from collections import deque
+
+# GUI tests run without a display.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
