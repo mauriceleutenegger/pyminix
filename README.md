@@ -13,7 +13,7 @@ source (e.g. "§9.2") point to protocol.md.
 |---|---|
 | `src/minix/` | The package. `transport.py`/`device.py` know MPSSE but not safety; `policy/` is pure functions with no I/O; `controller.py` owns the device thread; `ui/` knows nothing about the protocol. |
 | `tools/` | Standalone hardware scripts. `probe.py` is read-only; `adcsweep.py --enable-hv` **energizes the tube**. |
-| `tests/` | pytest suite. Runs against the simulator; never touches hardware. |
+| `tests/` | pytest suite. Uses a fake transport and the simulator (`minix.sim`); never touches hardware. |
 | `config/` | `units.example.toml`. Copy to `units.toml` (git-ignored) or `~/.config/minix/units.toml`. |
 | `legacy/` | Earlier prototypes, git-ignored and kept only on disk. **Not trustworthy — do not import or run.** |
 

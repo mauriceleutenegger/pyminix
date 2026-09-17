@@ -9,6 +9,7 @@ and both ADC channels, and runs failsafe() on exit.
     python tools/device_check.py --serial 01300036
     python tools/device_check.py --polls 10
     python tools/device_check.py --temp          # also configure and read the DS1722
+    python tools/device_check.py --sim --temp    # the same against the simulator
 
 Expected with HV off (docs/protocol.md §7.1, §10.2): ADBUS 00011111 on the
 first read (bits 0-1 then follow the clock and data levels the previous
@@ -26,6 +27,7 @@ import time
 from minix import protocol as p
 from minix.device import DeviceError, FramingError, MiniX
 from minix.discovery import list_controllers
+from minix.sim import SimTransport
 from minix.transport import FtdiTransport, TransportError
 
 
@@ -44,11 +46,14 @@ def main() -> int:
     ap.add_argument("--polls", type=int, default=3)
     ap.add_argument("--interval", type=float, default=0.5, help="seconds between polls")
     ap.add_argument("--temp", action="store_true", help="configure and read the DS1722")
+    ap.add_argument("--sim", action="store_true", help="use the simulator, not hardware")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="  %(levelname)s %(name)s: %(message)s")
 
     serial = args.serial
-    if serial is None:
+    if args.sim:
+        serial = serial or "01300036"
+    elif serial is None:
         found = list_controllers()
         if not found:
             print("no Mini-X controller found")
@@ -58,7 +63,7 @@ def main() -> int:
         serial = found[0].serial
 
     try:
-        dev = MiniX(FtdiTransport.open(serial))
+        dev = MiniX(SimTransport(serial) if args.sim else FtdiTransport.open(serial))
     except TransportError as exc:
         print(f"open failed: {exc}")
         return 1

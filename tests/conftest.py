@@ -7,7 +7,7 @@ import pytest
 from minix import protocol as p
 from minix.device import MiniX
 from minix.transport import TransportError
-from mpsse import parse
+from minix.mpsse import parse
 
 
 class FakeTransport:

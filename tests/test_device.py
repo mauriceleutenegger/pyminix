@@ -9,7 +9,7 @@ from minix.device import (
     decode_temperature_c,
 )
 from minix.transport import TransportError
-from mpsse import KNOWN_OPCODES
+from minix.mpsse import KNOWN_OPCODES
 
 ADC_REPLY = bytes([0x25, 0xA2])   # 1204 counts, from §10.1
 

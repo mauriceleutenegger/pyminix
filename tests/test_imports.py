@@ -12,6 +12,7 @@ MODULES = [
     "minix.sim",
     "minix.controller",
     "minix.telemetry",
+    "minix.mpsse",
     "minix.policy.limits",
     "minix.policy.sequencing",
     "minix.policy.ranging",
