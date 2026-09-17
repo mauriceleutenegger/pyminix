@@ -434,7 +434,7 @@ Observed values, serial 01300036:
 
 **Recommendation.** Treat a state with only one bit set as a fault. Confirm every change by readback (§9.2).
 
-**MONX (`0x80`, ADBUS7) is a live status input** (hardware). It reads 0 with HV off and 1 once the supply is up, so it works as a "tube ready" confirmation. The reference only displays it and never acts on it. **Recommendation:** treat a MONX that has not asserted within about a second of enabling as a fault. The actual assert time has not been measured (§12).
+**MONX (`0x80`, ADBUS7) is a live status input** (hardware). It reads 0 with HV off and 1 at 15 kV / 10 µA, so it works as a "tube ready" confirmation. The reference only displays it and never acts on it. **Recommendation:** treat a MONX that has not asserted shortly after the setpoints are reached as a fault. The assert time, and whether MONX asserts at all with zero setpoints, have not been measured (§12).
 
 ### 7.3 Interlock
 
@@ -614,7 +614,7 @@ setpoint commit (§9.1)
 
 **The reference sets the enables first and then commits the setpoints.** The DACs are at zero at that moment, because both startup and HV off leave them there, and `PrevVoltage` is 0. The commit therefore ramps up from zero under the ordering rules above. The reference neither reads back the enable bits nor checks MONX.
 
-**Recommendation.** Keep the vendor order, but make its precondition explicit: before enabling, **write zero to both DACs** instead of assuming they are zero. After enabling, confirm the bits by readback, require MONX to assert (§7.2), and then commit the setpoints. Enabling with the DACs already at the target would apply full HV in one step instead of ramping.
+**Recommendation.** Keep the vendor order, but make its precondition explicit: before enabling, **write zero to both DACs** instead of assuming they are zero. After enabling, confirm the bits by readback, commit the setpoints, and then require MONX to assert (§7.2). MONX is checked after the ramp because it is not known whether it asserts with zero setpoints. Enabling with the DACs already at the target would apply full HV in one step instead of ramping.
 
 #### De-energizing (source, `OnBnClickedHvOff`)
 
@@ -734,7 +734,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
 | ACBUS2 (`0x04`) | Always reads set. Function unknown. |
 | Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source, not validated. **Test it deliberately before relying on it.** |
-| MONX assert time | Not measured. The 1 s suggestion in §7.2 is a guess. |
+| MONX assert time | Not measured, nor whether MONX asserts with zero setpoints. The 1 s timeout used by this project is a guess. |
 | Double startup (§5.2) | Present in source; reason unknown. |
 | Non-NSI (Comet) path | Setpoint correction and timing (§9.2) are from source only; no non-NSI unit tested. |
 | Power overshoot through rounding | Found by source analysis (§9.1); not exercised. |

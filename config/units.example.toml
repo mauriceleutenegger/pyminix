@@ -1,24 +1,25 @@
 # Mini-X unit configuration.
 #
-# Copy to config/units.toml or ~/.config/minix/units.toml.
+# Copy to ~/.config/minix/units.toml or config/units.toml (checked in that
+# order).
 #
 # watt_max_w is REQUIRED per unit and must be 4.0 or 10.0, taken from the
 # unit's hardware documentation. It cannot be read from the device (§2.1).
 # If you are unsure, use 4.0: over-stating the rating permits over-driving
 # the tube; under-stating it only costs flux (§6.1.1).
+# The voltage range and HV conversion factor follow from the serial number
+# (§2.1) and are not configurable.
 
 [units."01300036"]
 watt_max_w = 10.0
 source     = "hardware documentation, verified 2026-08-13"
-# hv_max_kv and hv_factor are derived from the serial number (§2.1).
-# Override only with a documented reason.
 
 [safety]
-safety_margin_w    = 0.050  # absolute, as in the reference (§6.1.1)
-interlock_clear_s  = 3.0    # before controls re-enable; reference: 3 cycles of its 1 s loop (§7.3)
-monx_timeout_s     = 1.0    # tube-ready must assert within this after enabling (§7.2)
-tol_coarse         = 0.10   # range-check tolerances (§6.4)
-tol_fine           = 0.05
+safety_margin_w     = 0.050  # absolute, as in the reference (§6.1.1)
+interlock_clear_s   = 3.0    # before controls re-enable; reference: 3 cycles of its 1 s loop (§7.3)
+monx_timeout_s      = 1.0    # tube-ready must assert within this after enabling (§7.2); not measured
+range_tolerance     = 0.10   # out-of-range indicator band, plus a fixed 1.0 (§6.4)
+hv_off_test_delay_s = 7.0    # after HV on/off, before HV-off readings are tested (§6.4)
 
 [polling]
 gpio_hz    = 10.0   # interlock, MONX, enable readback
