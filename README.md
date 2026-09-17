@@ -45,6 +45,13 @@ every indicator, warning and fault means.
 `~/minix_logs/` unless `[logging] directory` says otherwise. In simulation
 mode a rating entered in the dialog is kept in memory only.
 
+## Continuous integration
+
+GitHub Actions runs the test suite on every push and pull request
+(`.github/workflows/tests.yml`), on Linux with Qt drawing offscreen.
+Results are on the repository's **Actions** tab and as a tick or cross
+beside each commit.
+
 ## Power rating
 
 The unit's power rating (4 W or 10 W) **cannot be read from the device** (§2.1).
