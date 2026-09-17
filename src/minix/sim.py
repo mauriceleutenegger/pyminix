@@ -7,15 +7,17 @@ observed or read in the vendor source (docs/protocol.md), not an ideal
 part:
 
 * DAC registers; HV enables gated by the interlock; a supply that settles
-  exponentially toward the DAC setpoints; MONX asserting after a delay.
-  After switch-off the HV falls quickly, then discharges slowly over a
-  few seconds.
+  exponentially toward the DAC setpoints; MONX asserting after a delay,
+  and dropping briefly at random above about 185 µA, as observed near
+  200 µA (§10.8). After switch-off the HV falls quickly, then discharges
+  slowly over a few seconds.
 * ADC replies in the real framing (null bit, trailing B1-B3 repeat), with
   the offsets and noise seen on hardware (§10.2, §10.3, §10.7): more
   noise with the supply on. A reading of 0 is normal with HV off.
 * A DS1722 that answers correctly only to the vendor clock sequence
   (§8.3, §8.4), with volatile config (0xE3 at start, as found), conversion
-  times, and board heating from tube power.
+  times, and slow board heating from tube power (a guess: no visible
+  heating was seen in minutes at 10 W, §10.8).
 * Random values in ACBUS bits 4-7, which are not pins (§3).
 
 It is stricter than the hardware in one respect: anything the model does
@@ -47,9 +49,11 @@ from .transport import TransportError
 
 log = logging.getLogger(__name__)
 
-# Observed on sn 01300036 (§10.2, §10.3, §10.7, docs/hardware-notes.md).
-HV_OFFSET_COUNTS = 5.0
-CURRENT_OFFSET_COUNTS = 8.0
+# Observed on sn 01300036 (§10.2, §10.7, §10.8, docs/hardware-notes.md).
+IDLE_OFFSET_COUNTS = 8.6        # both channels, supply off
+HV_GAIN = 0.996                 # supply on: 49.79 kV at 50, 19.9 at 20, 14.94 at 15
+CURRENT_GAIN = 0.997            # supply on: 198.7 µA at 198.95, 10.3 at 10
+CURRENT_ON_OFFSET_COUNTS = 6.0
 NOISE_COUNTS = 4.0              # supply off
 NOISE_ON_COUNTS = 15.0          # supply on: 14-16 counts measured on 2026-09-17
 SETTLE_TAU_S = 0.15             # measured ≈97 % within 0.5 s of a DAC write
@@ -57,6 +61,11 @@ SETTLE_TAU_S = 0.15             # measured ≈97 % within 0.5 s of a DAC write
 DISCHARGE_TAU_S = 0.3
 DISCHARGE_TAIL_TAU_S = 2.5
 DISCHARGE_TAIL_FRACTION = 0.07
+# MONX at high emission current: low on this fraction of reads (§10.8
+# measured 7-46 % of 1 Hz samples at 190-200 µA; none at 100 µA).
+THERMAL_TAU_S = 600.0           # board heating time constant; not measured
+MONX_FLICKER_ABOVE_UA = 185.0
+MONX_FLICKER_PROBABILITY = 0.2
 DS1722_CONFIG_AS_FOUND = 0xE3
 DS1722_TEMP_AS_FOUND_C = 25.0
 
@@ -94,6 +103,7 @@ class SimTransport:
         self.stuck_enable_readback: int | None = None
         self.drop_reply_bytes = 0
         self.adc_framing_errors = 0
+        self.monx_flicker_probability = MONX_FLICKER_PROBABILITY
 
         # Pins as driven by the host. Before MPSSE setup the outputs are off.
         self.adbus = 0x00
@@ -106,6 +116,7 @@ class SimTransport:
         self.kv = 0.0
         self.ua = 0.0
         self._kv_tail = 0.0             # slowly discharging part of kv after switch-off
+        self._board_c = ambient_c
         self._was_on = False
         self._enabled_since: float | None = None
         self._last_update = clock()
@@ -187,7 +198,7 @@ class SimTransport:
 
     @property
     def board_temperature_c(self) -> float:
-        return self.ambient_c + self.heating_c_per_w * self.kv * self.ua / 1000.0
+        return self._board_c
 
     def reset_peaks(self) -> None:
         self.max_commanded_mw = 0.0
@@ -340,13 +351,16 @@ class SimTransport:
         return bytes(cmd.read_len)
 
     def _adc_counts(self, channel: int) -> int:
+        on = self.supply_on
         if channel == 0:
-            volts, offset = self.kv / self.hv_factor, HV_OFFSET_COUNTS
+            volts = self.kv / self.hv_factor * (HV_GAIN if on else 1.0)
+            offset = 0.0 if on else IDLE_OFFSET_COUNTS
         else:
-            volts, offset = self.ua / p.CURRENT_FACTOR, CURRENT_OFFSET_COUNTS
+            volts = self.ua / p.CURRENT_FACTOR * (CURRENT_GAIN if on else 1.0)
+            offset = CURRENT_ON_OFFSET_COUNTS if on else IDLE_OFFSET_COUNTS
         counts = volts / p.VREF * p.DAC_ADC_SCALE + offset
         if self.noise:
-            counts += self._rng.gauss(0.0, NOISE_ON_COUNTS if self.supply_on else NOISE_COUNTS)
+            counts += self._rng.gauss(0.0, NOISE_ON_COUNTS if on else NOISE_COUNTS)
         return min(p.COUNTS_MAX, max(0, round(counts)))
 
     def _ds1722(self, cmd: Command) -> bytes:
@@ -411,8 +425,12 @@ class SimTransport:
     # --- supply dynamics -----------------------------------------------------
 
     def _monx(self) -> bool:
-        return (self.supply_on and self._enabled_since is not None
-                and self._clock() - self._enabled_since >= self.monx_delay_s)
+        ready = (self.supply_on and self._enabled_since is not None
+                 and self._clock() - self._enabled_since >= self.monx_delay_s)
+        if (ready and self.ua > MONX_FLICKER_ABOVE_UA
+                and self._rng.random() < self.monx_flicker_probability):
+            return False
+        return ready
 
     def _advance(self) -> None:
         now = self._clock()
@@ -434,6 +452,8 @@ class SimTransport:
             self.kv = fast + self._kv_tail
             self.ua -= self.ua * k
         self.max_actual_mw = max(self.max_actual_mw, self.kv * self.ua)
+        target_c = self.ambient_c + self.heating_c_per_w * self.kv * self.ua / 1000.0
+        self._board_c += (target_c - self._board_c) * (1.0 - math.exp(-dt / THERMAL_TAU_S))
 
     def _update_supply(self) -> None:
         if self.supply_on:
@@ -460,6 +480,7 @@ class SimFaults:
     supply_stuck: bool = False
     enables_stuck_on: bool = False
     usb_failure: bool = False
+    monx_flicker: bool = True
 
     LABELS = {
         "interlock_closed": "Interlock closed",
@@ -467,6 +488,7 @@ class SimFaults:
         "supply_stuck": "Supply stuck at 0",
         "enables_stuck_on": "Enable readback stuck on",
         "usb_failure": "USB failure",
+        "monx_flicker": "MONX flicker near 200 µA",
     }
 
     @classmethod
@@ -511,6 +533,7 @@ class SimHarness:
         sim.settle_tau_s = 1e9 if f.supply_stuck else self._normal_settle_tau_s
         sim.stuck_enable_readback = p.HV_EN_BOTH if f.enables_stuck_on else None
         sim.fail_io = f.usb_failure
+        sim.monx_flicker_probability = MONX_FLICKER_PROBABILITY if f.monx_flicker else 0.0
 
 
 def _trailing_bits(counts: int) -> int:

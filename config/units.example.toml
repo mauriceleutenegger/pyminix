@@ -17,7 +17,9 @@ source     = "hardware documentation, verified 2026-08-13"
 [safety]
 safety_margin_w     = 0.050  # absolute, as in the reference (§6.1.1)
 interlock_clear_s   = 3.0    # before controls re-enable; reference: 3 cycles of its 1 s loop (§7.3)
-monx_timeout_s      = 1.0    # tube-ready must assert within this after enabling (§7.2); not measured
+monx_timeout_s      = 1.0    # tube-ready (MONX) must assert within this after the ramp (§7.2)
+monx_warning_s      = 1.0    # warn if MONX stays low this long with HV on; shorter
+                             # drops are only counted (they are common near 200 µA, §10.8)
 range_tolerance     = 0.10   # out-of-range indicator band, plus a fixed 1.0 (§6.4)
 hv_off_test_delay_s = 7.0    # after HV on/off, before HV-off readings are tested (§6.4)
 

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from minix.config import PollingConfig, SafetyConfig, Settings, UnitEntry
 from minix.controller import Controller, State
 from minix.discovery import ControllerInfo
+from minix.policy.banding import PowerBand
 from minix.sim import SimHarness
 from minix.ui import app as app_module
 from minix.ui.bridge import QtBridge
@@ -220,6 +221,38 @@ def test_adjustment_is_reported(qtbot, gui):
     assert "reduced" in gui.confirmer.questions[-1][1]
     qtbot.waitUntil(lambda: "power limit" in log_text(gui), timeout=WAIT)
     assert gui.sims[-1].max_commanded_mw < 9950
+
+
+def test_full_power_lamp_and_band(qtbot, gui):
+    connect(qtbot, gui)
+    w = gui.window
+    w.kv_spin.setValue(50)
+    w.ua_spin.setValue(200)
+    switch_on(qtbot, gui)
+    qtbot.waitUntil(lambda: "brief drops" in w.ready_lamp.text(), timeout=WAIT)
+    assert w.ready_lamp.kind == "ok"               # flicker is not "not ready"
+    # The average sits just under the caution threshold, so the band may
+    # start at NORMAL; once it reaches CAUTION it must stay there.
+    qtbot.waitUntil(lambda: w.power_bar.band is PowerBand.CAUTION, timeout=WAIT)
+    seen = set()
+    for _ in range(30):
+        qtbot.wait(100)
+        seen.add(w.power_bar.band)
+    assert seen == {PowerBand.CAUTION}
+    assert "tube has not reported ready" not in log_text(gui)
+
+
+def test_sustained_monx_loss_shows_not_ready(qtbot, gui):
+    connect(qtbot, gui)
+    switch_on(qtbot, gui)
+    w = gui.window
+    w.sim_controls["tube_never_ready"].setChecked(True)
+    gui.sims[-1]._enabled_since = gui.sims[-1]._clock()   # as if the supply restarted
+    qtbot.waitUntil(lambda: w.ready_lamp.kind == "warn", timeout=WAIT)
+    assert "has not reported ready" in log_text(gui)
+    assert state(gui) is State.ON
+    w.sim_controls["tube_never_ready"].setChecked(False)
+    qtbot.waitUntil(lambda: w.ready_lamp.kind == "ok", timeout=WAIT)
 
 
 def test_emergency_stop(qtbot, gui):

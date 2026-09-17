@@ -7,7 +7,7 @@ from minix import protocol as p
 from minix.config import SafetyConfig, UnitConfig
 from minix.device import MiniX
 from minix.policy.averaging import RunningAverage
-from minix.policy.banding import PowerBand, power_band
+from minix.policy.banding import PowerBand, PowerBandTracker, power_band
 from minix.policy.limits import AdjustmentKind, DacSetpoints, commit_setpoints
 from minix.policy.ranging import RangeChecker, in_range
 from minix.policy.sequencing import (
@@ -373,6 +373,49 @@ def test_maximal_setpoint_shows_caution():
     for unit in (UNIT_4W, UNIT_10W):
         c = commit_setpoints(unit.hv_max_kv, unit.current_max_ua, unit)
         assert power_band(c.power_mw, unit) is PowerBand.CAUTION
+
+
+def test_tracker_goes_up_at_once():
+    tracker = PowerBandTracker(UNIT_10W)
+    assert tracker.band is None
+    assert tracker.update(5000) is PowerBand.NORMAL
+    assert tracker.update(9900) is PowerBand.CAUTION
+    assert tracker.update(10000) is PowerBand.DANGER
+
+
+@pytest.mark.parametrize("power, band", [
+    (9990, PowerBand.DANGER), (9901, PowerBand.DANGER),     # within 100 mW of 10 W
+    (9899, PowerBand.CAUTION), (9850, PowerBand.CAUTION),   # 9900 - 100 < power
+    (9799, PowerBand.NORMAL), (3000, PowerBand.NORMAL),
+    (4, PowerBand.IDLE), (0, PowerBand.IDLE),
+])
+def test_tracker_comes_down_with_hysteresis(power, band):
+    tracker = PowerBandTracker(UNIT_10W)
+    tracker.update(10050)
+    assert tracker.update(power) is band
+
+
+def test_tracker_holds_caution_near_the_threshold():
+    tracker = PowerBandTracker(UNIT_10W)
+    rng = random.Random(4)
+    tracker.update(9900)
+    bands = {tracker.update(rng.gauss(9892, 19)) for _ in range(5000)}
+    assert bands == {PowerBand.CAUTION}
+
+
+def test_tracker_idle_hysteresis_is_small():
+    tracker = PowerBandTracker(UNIT_4W)
+    tracker.update(12)
+    assert tracker.update(6) is PowerBand.NORMAL
+    assert tracker.update(4) is PowerBand.IDLE
+
+
+def test_tracker_reset():
+    tracker = PowerBandTracker(UNIT_4W)
+    tracker.update(4000)
+    tracker.reset()
+    assert tracker.band is None
+    assert tracker.update(100) is PowerBand.NORMAL
 
 
 def test_nan_power_is_an_error():

@@ -395,10 +395,18 @@ class MainWindow(QMainWindow):
             self.enables_lamp.set("alarm", "HV enabled")
         else:
             self.enables_lamp.set("off", "HV enables off")
-        if status.tube_ready:
+        if status.state is State.ON:
+            # Brief MONX drops are common near 200 µA (§10.8): count them,
+            # and only show "not ready" once MONX has stayed low a while.
+            low = status.monx_low_s
+            if low is not None and low >= self._settings.safety.monx_warning_s:
+                self.ready_lamp.set("warn", "Tube not ready")
+            elif status.monx_drops:
+                self.ready_lamp.set("ok", f"Tube ready ({status.monx_drops} brief drops)")
+            else:
+                self.ready_lamp.set("ok", "Tube ready")
+        elif status.tube_ready:
             self.ready_lamp.set("ok", "Tube ready")
-        elif status.state is State.ON:
-            self.ready_lamp.set("warn", "Tube not ready")
         else:
             self.ready_lamp.set("off", "Tube not ready")
 
@@ -407,10 +415,11 @@ class MainWindow(QMainWindow):
         ua = status.ua_average if status.ua_average is not None else status.ua
         self.kv_value.setText("—" if kv is None else f"{kv:.2f} kV")
         self.ua_value.setText("—" if ua is None else f"{ua:.2f} µA")
-        if status.power_mw is None or status.band is None or self._unit is None:
+        power = status.power_average_mw
+        if power is None or status.band is None or self._unit is None:
             self.power_bar.clear()
         else:
-            self.power_bar.set_power(status.power_mw, status.band, self._unit.rated_mw)
+            self.power_bar.set_power(power, status.band, self._unit.rated_mw)
         self.temperature_value.setText(
             "—" if status.temperature_c is None else f"{status.temperature_c:.1f} °C")
         r = status.range

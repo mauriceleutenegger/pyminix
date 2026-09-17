@@ -166,3 +166,58 @@ switch-off completed without a fault or warning.
 The simulator was calibrated to these results: ramp time constant 0.15 s,
 noise 15 counts with the supply on, and a two-part discharge (7 % of the
 voltage decaying with a 2.5 s time constant).
+
+## 2026-09-17: full power
+
+`minix-gui`, run record `20260917-114531_01300036.csv`. Short runs up to
+50 kV / 198.95 µA (9.95 W, reduced from a 200 µA request by the power
+limit), and at 20 kV with 50–200 µA. Every sequence completed without a
+fault.
+
+| setpoint | power | MONX high (1 Hz samples) | kV | µA |
+|---|---|---|---|---|
+| 15 kV / 15 µA | 0.23 W | 16/16 | 14.90 ± 0.18 | 15.26 ± 0.72 |
+| 50 kV / 15 µA | 0.75 W | 71/71 | 49.79 ± 0.17 | 15.01 ± 0.74 |
+| 20 kV / 50 µA | 1.0 W | 19/19 | 19.97 ± 0.18 | 50.05 ± 0.74 |
+| 20 kV / 100 µA | 2.0 W | 18/18 | 19.97 ± 0.17 | 99.84 ± 0.70 |
+| 20 kV / 190 µA | 3.8 W | 7/13 | 19.95 ± 0.24 | 189.85 ± 0.98 |
+| 20 kV / 200 µA | 4.0 W | 14/15 | 19.91 ± 0.18 | 199.90 ± 0.97 |
+| 50 kV / 198.95 µA | 9.9 W | 80/95 | 49.79 ± 0.18 | 198.67 ± 0.73 |
+
+- **MONX flickers at high emission current.** It dropped briefly and often
+  (173 warnings in about 3 minutes, sometimes several per second) at
+  190–200 µA, at both 20 kV and 50 kV. It never dropped at 50 kV with
+  15 µA or at up to 100 µA. During the drops the HV and current readings
+  stayed on target with ordinary noise, and every sample was in range, so
+  the drops did not coincide with any visible change in output. What MONX
+  signals is unknown: the only name for it is "MON MINIX RDY" in the
+  source, and the vendor application only displays it. It may be a
+  regulation or compliance flag near the current limit; a question for
+  Amptek.
+- **The power indicator flickers at full power.** Measured power at
+  50 kV / 198.95 µA was 9892 mW on average (committed 9948 mW), with noise
+  of about 50 mW. Single readings crossed the caution (9900 mW) and danger
+  (10000 mW, max 10007 mW) thresholds, so the band switched between
+  normal, caution and danger. The out-of-range power check (< 10050 mW)
+  never tripped.
+- **Readback at full scale** is as good as at low settings: HV about
+  0.2 kV low at 50 kV, current within 0.3 µA at 199 µA.
+- **Board temperature** stayed between 27.0 and 28.0 °C. The runs were
+  short, and the sensor is on the controller board, not the tube.
+
+**Changes made in response** (same day):
+
+- **MONX:** brief drops are now counted rather than reported one by one.
+  The count is in the status and the run record (`monx_drops`), with a
+  once-a-minute summary. A warning appears only when MONX stays low for
+  `monx_warning_s` (1 s). The GUI lamp shows the count and turns amber
+  only for a sustained drop.
+- **Power band:** now computed from the averaged power with 100 mW
+  hysteresis. The run record has `power_mw` (single reading) and
+  `power_average_mw`.
+- **Simulator:**
+  - MONX reads low on 20 % of reads above 185 µA, switchable in the panel.
+  - Readback uses the measured gains: HV 0.4 % low; current 0.3 % low plus
+    6 counts.
+  - Board heating now has a 10-minute time constant, a guess consistent
+    with no visible heating in these short runs.

@@ -133,7 +133,8 @@ class UnitConfig:
 @dataclass(frozen=True)
 class SafetyConfig:
     interlock_clear_s: float = 3.0      # §7.3: 3 cycles of the vendor's 1 s loop
-    monx_timeout_s: float = 1.0         # §7.2; not measured
+    monx_timeout_s: float = 1.0         # §7.2: MONX must assert this soon after the ramp
+    monx_warning_s: float = 1.0         # §7.2: warn when MONX stays low this long with HV on
     range_tolerance: float = 0.10       # §6.4
     hv_off_test_delay_s: float = 7.0    # §6.4: ErrTestDelay, 7 cycles of 1 s
 

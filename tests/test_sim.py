@@ -115,17 +115,20 @@ def test_supply_follows_setpoints_only_when_enabled(sim, dev, clock):
     dev.set_hv_enable(True)
     clock.advance(5)
     readings = [monitors(dev) for _ in range(100)]
-    assert sum(r[0] for r in readings) / 100 == pytest.approx(30, abs=0.2)
-    assert sum(r[1] for r in readings) / 100 == pytest.approx(50.4, abs=0.4)
+    assert sum(r[0] for r in readings) / 100 == pytest.approx(29.88, abs=0.2)
+    assert sum(r[1] for r in readings) / 100 == pytest.approx(50.15, abs=0.4)
 
 
-def test_readback_matches_the_hardware_measurement(dev, clock):
-    energize(dev, clock, kv=15, ua=10)
-    hv = [dev.read_adc(p.ADC_HV).counts for _ in range(200)]
-    ua = [dev.read_adc(p.ADC_CURRENT).counts for _ in range(200)]
-    # §10.3: 1204 for 1200 commanded, 208 for 200
-    assert sum(hv) / len(hv) == pytest.approx(1205, abs=2)
-    assert sum(ua) / len(ua) == pytest.approx(208, abs=2)
+@pytest.mark.parametrize("kv, ua, kv_read, ua_read", [
+    (15, 10, 14.90, 10.32),          # §10.7 means
+    (50, 198.95, 49.79, 198.67),     # §10.8 means
+    (20, 100, 19.97, 99.84),
+])
+def test_readback_matches_the_hardware_measurement(dev, clock, kv, ua, kv_read, ua_read):
+    energize(dev, clock, kv=kv, ua=ua)
+    readings = [monitors(dev) for _ in range(400)]
+    assert sum(r[0] for r in readings) / 400 == pytest.approx(kv_read, abs=0.1)
+    assert sum(r[1] for r in readings) / 400 == pytest.approx(ua_read, abs=0.3)
 
 
 def test_supply_settles_gradually(sim, dev, clock):
@@ -238,10 +241,16 @@ def test_reading_before_first_conversion_is_the_old_value(dev, clock):
     assert dev.read_temperature_c() == 25.0
 
 
-def test_board_heats_with_tube_power(dev, clock):
+def test_board_heats_slowly_with_tube_power(sim, dev, clock):
     dev.configure_temperature_sensor()
-    energize(dev, clock, kv=40, ua=100)              # 4 W -> +2 °C
-    clock.advance(5)
+    energize(dev, clock, kv=40, ua=100)              # 4 W -> +2 °C eventually
+    for _ in range(60):                              # a minute: barely warmer
+        clock.advance(1)
+        sim.advance()
+    assert dev.read_temperature_c() == pytest.approx(27.0, abs=0.25)
+    for _ in range(360):                             # an hour
+        clock.advance(10)
+        sim.advance()
     assert dev.read_temperature_c() == pytest.approx(29.0, abs=0.1)
 
 

@@ -26,9 +26,15 @@ Behaviour, with the §s of docs/protocol.md it follows:
   transport failure also closes the device.
 * Not faults, following the reference: out-of-range monitors (an
   indicator only, §6.4), a monitor that does not settle within the
-  reference's wait (a warning), MONX dropping while on (a warning), and
-  temperature problems (a warning; an unconfigured sensor is
-  reconfigured).
+  reference's wait (a warning), MONX dropping while on, and temperature
+  problems (a warning; an unconfigured sensor is reconfigured).
+* MONX while on (§7.2, §10.8): brief drops are common near 200 µA and do
+  not show in the monitors, so they are only counted (monx_drops) and
+  summarized once a minute. MONX staying low for monx_warning_s is a
+  warning.
+* Power indicator: the band follows the averaged power with hysteresis
+  (policy.banding.PowerBandTracker), so noise at full power does not make
+  it flicker (§10.8). power_mw is the latest single reading.
 """
 
 from __future__ import annotations
@@ -52,7 +58,7 @@ from .device import (
     NotInitializedError, SyncError, TemperatureError, TemperatureNotConfigured,
 )
 from .policy.averaging import RunningAverage
-from .policy.banding import PowerBand, power_band
+from .policy.banding import PowerBand, PowerBandTracker
 from .policy.limits import Commitment, DacSetpoints, commit_setpoints
 from .policy.ranging import RangeChecker, RangeStatus, in_range
 from .policy.sequencing import (
@@ -66,6 +72,7 @@ log = logging.getLogger(__name__)
 MAX_FRAMING_ERRORS = 3          # consecutive ADC framing errors before a fault
 IDLE_TICK_S = 0.5               # loop period while disconnected
 FIRST_TEMPERATURE_DELAY_S = 1.5 # a 12-bit conversion takes up to 1.2 s
+MONX_SUMMARY_S = 60.0           # how often brief MONX drops are summarized
 
 
 class State(enum.Enum):
@@ -111,12 +118,15 @@ class Status:
     controls_locked: bool = True
     enables_on: bool | None = None
     tube_ready: bool | None = None
+    monx_low_s: float | None = None     # how long MONX has read low with HV on
+    monx_drops: int = 0                 # MONX drops since HV was last switched
     kv: float | None = None
     ua: float | None = None
     kv_average: float | None = None
     ua_average: float | None = None
-    power_mw: float | None = None
-    band: PowerBand | None = None
+    power_mw: float | None = None       # latest single readings
+    power_average_mw: float | None = None
+    band: PowerBand | None = None       # from the averaged power, with hysteresis
     range: RangeStatus | None = None
     temperature_c: float | None = None
     setpoints: Commitment | None = None
@@ -236,6 +246,7 @@ class Session:
         self._serial = serial
         self._dac = DacSetpoints.zero(unit)
         self._range = RangeChecker(unit, self._settings.safety)
+        self._band = PowerBandTracker(unit)
         self._state = State.IDLE      # provisional, so failures are handled as faults
         try:
             self._dev.initialize()
@@ -419,10 +430,9 @@ class Session:
     def status(self) -> Status:
         now = self._clock()
         gpio = self._gpio
-        power = band = None
-        if self._kv is not None and self._ua is not None and self._unit is not None:
+        power = None
+        if self._kv is not None and self._ua is not None:
             power = self._kv * self._ua
-            band = power_band(power, self._unit)
         return Status(
             time=now,
             state=self._state,
@@ -434,12 +444,15 @@ class Session:
             controls_locked=self._controls_locked(now),
             enables_on=None if gpio is None else gpio.hv_enabled,
             tube_ready=None if gpio is None else gpio.tube_ready,
+            monx_low_s=None if self._monx_low_since is None else now - self._monx_low_since,
+            monx_drops=self._monx_drops,
             kv=self._kv,
             ua=self._ua,
             kv_average=self._avg_kv.value,
             ua_average=self._avg_ua.value,
             power_mw=power,
-            band=band,
+            power_average_mw=self._average_power(),
+            band=None if self._band is None else self._band.band,
             range=self._range_status,
             temperature_c=self._temperature,
             setpoints=self._commitment,
@@ -583,7 +596,6 @@ class Session:
 
     def _handle_gpio(self, gpio: GpioState) -> None:
         now = self._clock()
-        previous = self._gpio
         self._gpio = gpio
         closed = gpio.interlock_closed
         if self._interlock_closed is None:
@@ -608,10 +620,8 @@ class Session:
                 raise _Fault("HV enable bits read set while HV is off")
             if self._state is State.ON and not gpio.hv_enabled:
                 raise _Fault("HV enable bits dropped while HV is on")
-            if (self._state is State.ON and closed and previous is not None
-                    and previous.tube_ready and not gpio.tube_ready):
-                self._event(Level.WARNING, "tube_not_ready",
-                            "the tube stopped reporting ready (MONX) with HV on")
+            if self._state is State.ON and closed:
+                self._track_monx(now, gpio.tube_ready)
 
     def _poll_monitors(self) -> None:
         self._next_poll["adc"] = self._clock() + 1.0 / self._settings.polling.adc_hz
@@ -638,7 +648,45 @@ class Session:
             return self._kv
         self._ua = reading.volts * self._unit.current_factor
         self._avg_ua.add(self._ua)
+        self._update_band()
         return self._ua
+
+    def _average_power(self) -> float | None:
+        kv, ua = self._avg_kv.value, self._avg_ua.value
+        return None if kv is None or ua is None else kv * ua
+
+    def _update_band(self) -> None:
+        power = self._average_power()
+        if power is not None:
+            self._band.update(power)
+
+    def _track_monx(self, now: float, ready: bool) -> None:
+        if ready:
+            if self._monx_warned:
+                self._event(Level.INFO, "tube_ready", "the tube reports ready (MONX) again")
+            self._monx_low_since = None
+            self._monx_warned = False
+        elif self._monx_low_since is None:
+            self._monx_low_since = now
+            self._monx_drops += 1
+            self._monx_window_drops += 1
+        elif (not self._monx_warned
+              and now - self._monx_low_since >= self._settings.safety.monx_warning_s):
+            self._monx_warned = True
+            self._event(Level.WARNING, "tube_not_ready",
+                        f"the tube has not reported ready (MONX) for "
+                        f"{self._settings.safety.monx_warning_s:g} s with HV on")
+        if now - self._monx_window_start >= MONX_SUMMARY_S:
+            self._summarize_monx(now)
+
+    def _summarize_monx(self, now: float) -> None:
+        if self._monx_window_drops:
+            self._event(Level.INFO, "monx_drops",
+                        f"MONX dropped {self._monx_window_drops} times in the last "
+                        f"{now - self._monx_window_start:.0f} s with HV on",
+                        count=self._monx_window_drops)
+        self._monx_window_drops = 0
+        self._monx_window_start = now
 
     def _poll_temperature(self) -> None:
         self._next_poll["temp"] = self._clock() + 1.0 / self._settings.polling.temp_hz
@@ -715,10 +763,16 @@ class Session:
         self._range_status = None
         self._kv = self._ua = None
         self._reset_averages()
+        self._summarize_monx(now)
+        self._monx_drops = 0
+        self._monx_low_since = None
+        self._monx_warned = False
 
     def _reset_averages(self) -> None:
         self._avg_kv.reset()
         self._avg_ua.reset()
+        if self._band is not None:
+            self._band.reset()
 
     def _controls_locked(self, now: float) -> bool:
         return not self._interlock_closed or now < self._clear_at
@@ -752,6 +806,12 @@ class Session:
         self._avg_ua = RunningAverage()
         self._range: RangeChecker | None = None
         self._range_status: RangeStatus | None = None
+        self._band: PowerBandTracker | None = None
+        self._monx_low_since: float | None = None
+        self._monx_warned = False
+        self._monx_drops = 0
+        self._monx_window_drops = 0
+        self._monx_window_start = 0.0
         self._temperature: float | None = None
         self._temperature_problem: str | None = None
         self._fault: str | None = None

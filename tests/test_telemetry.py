@@ -106,6 +106,8 @@ def test_run_record(recorder, clock, tmp_path):
     assert last_on["enables_on"] == "1" and last_on["tube_ready"] == "1"
     assert last_on["in_range"] == "1"
     assert last_on["band"] == "NORMAL"
+    assert float(last_on["power_average_mw"]) == pytest.approx(155, abs=15)
+    assert last_on["monx_drops"] == "0"
     assert last_on["temperature_c"] != ""
     assert last_on["time"].startswith("2026-09-17T12:")
     elapsed = [float(row["elapsed_s"]) for row in samples]

@@ -492,13 +492,86 @@ def test_lost_device_during_energize(session, clock, sim, rec):
     assert status.state is State.FAULT and not status.connected
 
 
-def test_monx_dropping_is_a_warning(on, clock, sim, rec):
+def test_sustained_monx_loss_is_a_warning(on, clock, sim, rec):
     run(on, clock, 0.5)
     sim.monx_delay_s = 1e9
     sim._enabled_since = clock.now             # as if the supply restarted
     run(on, clock, 0.5)
-    assert on.state is State.ON
-    assert "tube_not_ready" in rec.kinds()
+    status = on.status()
+    assert status.monx_low_s == pytest.approx(0.5, abs=0.15)
+    assert status.monx_drops == 1
+    assert "tube_not_ready" not in rec.kinds()  # not yet: under monx_warning_s
+    run(on, clock, 1.0)
+    assert rec.kinds().count("tube_not_ready") == 1
+    assert "1 s" in rec.last("tube_not_ready").message
+    run(on, clock, 3.0)
+    assert rec.kinds().count("tube_not_ready") == 1   # once per episode
+    assert on.state is State.ON                       # a warning, not a fault
+    sim.monx_delay_s = 0.0
+    run(on, clock, 0.2)
+    assert rec.last("tube_ready")
+    assert on.status().monx_low_s is None
+
+
+def full_power(clock, sim, rec, flicker=True):
+    sim.monx_flicker_probability = 0.2 if flicker else 0.0
+    session = make_session(clock, sim, rec)
+    connect(session, clock)
+    energize(session, clock, 50, 200)          # committed as 198.95 µA
+    return session
+
+
+def test_brief_monx_drops_are_counted_not_warned(clock, sim, rec):
+    session = full_power(clock, sim, rec)
+    run(session, clock, 30)
+    status = session.status()
+    assert status.state is State.ON
+    assert status.monx_drops > 20
+    assert "tube_not_ready" not in rec.kinds()
+    assert "monx_drops" not in rec.kinds()
+    run(session, clock, 35)                    # past the one-minute summary
+    summary = rec.last("monx_drops")
+    assert summary.level is Level.INFO
+    assert summary.data["count"] > 20
+    assert "in the last 6" in summary.message
+    session.deenergize()                       # the rest is summarized at switch-off
+    assert rec.kinds().count("monx_drops") == 2
+    assert session.status().monx_drops == 0
+
+
+def test_no_drops_without_flicker(clock, sim, rec):
+    session = full_power(clock, sim, rec, flicker=False)
+    run(session, clock, 65)
+    assert session.status().monx_drops == 0
+    assert "monx_drops" not in rec.kinds()
+    session.deenergize()
+    assert "monx_drops" not in rec.kinds()
+
+
+def test_power_band_is_steady_at_full_power(clock, sim, rec):
+    session = full_power(clock, sim, rec)
+    run(session, clock, 5)
+    bands = []
+    for _ in range(600):                       # 60 s of statuses
+        run(session, clock, 0.1)
+        bands.append(session.status().band)
+    status = session.status()
+    # single readings straddle the thresholds (as on hardware); the band does not
+    assert status.power_average_mw == pytest.approx(9892, abs=40)
+    assert set(bands) == {PowerBand.CAUTION}
+
+
+def test_power_band_follows_real_changes(on, clock, sim):
+    run(on, clock, 5)
+    assert on.status().band is PowerBand.NORMAL
+    on.commit(50, 200)
+    run(on, clock, 5)
+    assert on.status().band is PowerBand.CAUTION
+    on.commit(20, 50)
+    run(on, clock, 5)
+    assert on.status().band is PowerBand.NORMAL
+    on.deenergize()
+    assert on.status().band is None
 
 
 def test_temperature_sensor_is_reconfigured(on, clock, sim, rec):

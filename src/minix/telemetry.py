@@ -5,7 +5,10 @@ connection, from "connected" to "disconnected" (or a lost device), as two
 CSV files in the log directory:
 
     <start>_<serial>.csv          status samples at sample_hz, plus a row
-                                  whenever the state changes
+                                  whenever the state changes. power_mw is
+                                  the latest single reading; band follows
+                                  power_average_mw. monx_drops counts MONX
+                                  drops since HV was switched.
     <start>_<serial>_events.csv   every controller event
 
 Both begin with '#' comment lines giving the serial number, the power
@@ -37,8 +40,8 @@ log = logging.getLogger(__name__)
 
 SAMPLE_COLUMNS = [
     "time", "elapsed_s", "state", "interlock_closed", "enables_on", "tube_ready",
-    "setpoint_kv", "setpoint_ua", "kv", "ua", "kv_average", "ua_average",
-    "power_mw", "band", "in_range", "temperature_c", "fault",
+    "monx_drops", "setpoint_kv", "setpoint_ua", "kv", "ua", "kv_average", "ua_average",
+    "power_mw", "power_average_mw", "band", "in_range", "temperature_c", "fault",
 ]
 EVENT_COLUMNS = ["time", "elapsed_s", "level", "kind", "message"]
 RUN_ENDING_EVENTS = frozenset({"disconnected", "device_lost"})
@@ -148,9 +151,9 @@ class RunRecorder:
         return [
             self._timestamp(), _num(s.time - self._start_time, 3), s.state.name,
             _flag(s.interlock_closed), _flag(s.enables_on), _flag(s.tube_ready),
-            _num(sp and sp.kv, 4), _num(sp and sp.ua, 3),
+            str(s.monx_drops), _num(sp and sp.kv, 4), _num(sp and sp.ua, 3),
             _num(s.kv, 4), _num(s.ua, 3), _num(s.kv_average, 4), _num(s.ua_average, 3),
-            _num(s.power_mw, 1), s.band.name if s.band else "",
+            _num(s.power_mw, 1), _num(s.power_average_mw, 1), s.band.name if s.band else "",
             _flag(s.range.ok) if s.range and s.range.testing else "",
             _num(s.temperature_c, 4), s.fault or "",
         ]

@@ -382,6 +382,8 @@ mwDanger  =  WattageMax * 1000
 - **A maximal setpoint shows yellow immediately.** `mwCaution` subtracts **twice** the safety margin, while the setpoint clamp (§9.1) subtracts it once, so the yellow band begins 50 mW below the highest commandable power.
 - **The last branch is unreachable**; the source comments it "this should never happen, indicates error".
 
+**This project bands the averaged power, with hysteresis.** The reference bands each single reading. At full power the measurement noise (about 50 mW) makes single readings cross the caution and danger thresholds, so its indicator flickers (§10.8). This project uses the running averages of both monitors. A higher band is entered at once; a lower band only once the average is 100 mW below that band's threshold (5 mW for the idle band). The measured average at a maximal setpoint sits just under the caution threshold (about 9890 mW against 9900 mW on a 10 W unit), so the indicator may show normal for a second or two before settling on caution. The run record keeps the single-reading power alongside the average.
+
 #### Range checking
 
 `HV_InRange(set, mon, large)` and `I_InRange(set, mon, large)` both test:
@@ -434,7 +436,9 @@ Observed values, serial 01300036:
 
 **Recommendation.** Treat a state with only one bit set as a fault. Confirm every change by readback (§9.2).
 
-**MONX (`0x80`, ADBUS7) is a live status input** (hardware). It reads 0 with HV off and 1 at 15 kV / 10 µA, so it works as a "tube ready" confirmation. The reference only displays it and never acts on it. **Recommendation:** treat a MONX that has not asserted shortly after the setpoints are reached as a fault. The assert time, and whether MONX asserts at all with zero setpoints, have not been measured (§12).
+**MONX (`0x80`, ADBUS7) is a live status input** (hardware). It reads 0 with HV off and asserts within about a second of switching on. **At high emission current (about 190 µA and above) it drops briefly and often while HV is on, although the HV and current readings stay on target** (§10.8). It is therefore not a reliable continuous "tube ready" signal, and its exact meaning is unknown. The reference only displays it and never acts on it. **Recommendation:** require MONX to assert at least once shortly after the setpoints are reached, and treat a later drop as information, not as a fault. Whether MONX asserts with zero setpoints is unknown (§12).
+
+**This project** requires MONX within `monx_timeout_s` (1 s) after the ramp, or it faults and switches HV off. While HV is on, each drop is counted (the count is in the status and the run record) and brief drops are summarized once a minute. A warning is raised only when MONX stays low for `monx_warning_s` (1 s), with a follow-up when it returns. The GUI's tube-ready lamp shows the drop count and turns amber only for a sustained drop.
 
 ### 7.3 Interlock
 
@@ -705,6 +709,14 @@ This project's GUI switched HV on three times at 15 kV, with 15 µA and 10 µA, 
 - **Noise with HV on** is about 15 counts (σ) on both channels: ±0.18 kV and ±0.8 µA, roughly four times the idle noise. Means were within 8 counts of the setpoints, and every sample was inside the ±10 % + 1 band (§6.4). Single readings are noisy enough that the running average matters for display.
 - **After switch-off** the HV monitor falls fast, then discharges slowly: from 15 kV it read 1.1 kV after 1 s, 0.5 kV after 3 s and about 0.1 kV after 6 s. The reference's 7 s wait before testing HV-off readings (§6.4) covers this tail.
 
+### 10.8 Full power (September 2026)
+
+Short runs at 50 kV / 198.95 µA (9.95 W; a 200 µA request reduced by the power limit, §9.1) and at 20 kV with 50–200 µA completed without a fault. Readback stayed within 0.3 kV and 0.3 µA of the setpoints, with the same noise as at low settings.
+
+- **MONX flickers at 190–200 µA**, at both 20 kV and 50 kV: it read high in only 7 of 13 one-second samples at 20 kV / 190 µA, and 80 of 95 at 50 kV / 198.95 µA. It never dropped at 50 kV / 15 µA or at up to 100 µA. The monitors showed no change during the drops (§7.2).
+- **Measured power noise (about 50 mW) crosses the band thresholds** at full power, so a single-reading power indicator (§6.4) flickers between normal, caution and danger. The power range check (< 10050 mW) never tripped; the highest single reading was 10007 mW.
+- **Board temperature** stayed near 27 °C during these short runs.
+
 ---
 
 ## 11. Transaction serialization
@@ -743,7 +755,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
 | ACBUS2 (`0x04`) | Always reads set. Function unknown. |
 | Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source, not validated. **Test it deliberately before relying on it.** |
-| MONX timing | Asserted within about 1 s of enabling at 15 kV (§10.7), and the 1 s check after the ramp never failed. Whether MONX asserts with zero setpoints is unknown. |
+| MONX meaning | Asserts within about 1 s of enabling (§10.7) but flickers at emission currents of about 190 µA and above while the output is unaffected (§10.8). What it signals is unknown, as is whether it asserts with zero setpoints. A question for Amptek. |
 | Double startup (§5.2) | Present in source; reason unknown. |
 | Non-NSI (Comet) path | Setpoint correction and timing (§9.2) are from source only; no non-NSI unit tested. |
 | Power overshoot through rounding | Found by source analysis (§9.1); not exercised. |
@@ -790,3 +802,4 @@ Additions:
 - **§9.2** Failsafe on any I/O error, and DACs left at their minima on close.
 - **§10.6** The September read-only checks.
 - **§10.7** The first energized session through this project's software: ramp and MONX timing, noise with HV on, and the discharge tail after switch-off.
+- **§10.8** Full power: MONX flicker at high emission current, and power-indicator flicker from measurement noise. §7.2 no longer calls MONX a reliable continuous ready signal; §6.4 and §7.2 describe how this project handles both.
