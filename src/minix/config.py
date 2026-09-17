@@ -1,9 +1,14 @@
 """Unit and application configuration.
 
-UnitConfig describes one controller: the tables derived from its serial
-number (§2.1) and its power rating, which cannot be read from the device and
-so must be configured (§6.1.1). There is no default rating: a unit without
-one cannot be opened.
+UnitConfig describes one controller: its model, voltage range and power
+rating.
+
+The controller reports a model on two strapping pins (§2.2), and for the
+OEM models that gives the rating. resolve_unit() prefers it, uses the
+configured rating as a cross-check, and takes the **lower** of the two if
+they disagree. A non-OEM controller (type 3) does not distinguish 4 W from
+10 W, so there the rating must be configured (§6.1.1); there is no
+default.
 
 Settings is the configuration file (see config/units.example.toml): one
 entry per serial number, plus safety timings, polling rates and logging.
@@ -22,6 +27,31 @@ import tomli_w
 from . import protocol as p
 
 VALID_RATINGS_W = (4.0, 10.0)
+
+
+@dataclass(frozen=True)
+class DeviceModel:
+    """A controller model, as reported by the strapping pins (§2.2)."""
+
+    code: int
+    controller: str
+    tube: str
+    watt_max_w: float | None        # None: the pins do not give the rating
+    hv_factor: float | None = None  # None: derive from the serial number
+    hv_min_kv: float | None = None
+    hv_max_kv: float | None = None
+    current_min_ua: float = 5.0
+    current_max_ua: float = 200.0
+
+
+# From the Mini-X API Programming Guide (2015) and its examples; the
+# decoding was recovered from the vendor DLL. See docs/protocol.md §2.2.
+DEVICE_MODELS = {
+    0: DeviceModel(0, "MX70", "Mini-X-OEM 70kV 10W", 10.0, 20.0, 35.0, 70.0, 10.0, 143.0),
+    1: DeviceModel(1, "MX50", "Mini-X-OEM 50kV 4W", 4.0, 12.5, 10.0, 50.0),
+    2: DeviceModel(2, "MX50.10", "Mini-X-OEM 50kV 10W", 10.0, 12.5, 10.0, 50.0),
+    3: DeviceModel(3, "Mini-X", "Mini-X 40kV/50kV (non-OEM)", None),
+}
 NSI_SERIAL_MIN = 10000          # serial > 9999 (§2.1)
 HV50_SERIAL_MIN = 1118880
 
@@ -62,7 +92,8 @@ class UnitConfig:
     serial: str
     watt_max_w: float
     safety_margin_w: float = SAFETY_MARGIN_W
-    source: str = ""
+    source: str = ""                    # where the rating came from
+    device_type: int | None = None      # from the strapping pins, if read
 
     def __post_init__(self):
         if self.watt_max_w not in VALID_RATINGS_W:
@@ -90,8 +121,15 @@ class UnitConfig:
         return self.is_nsi and self.serial_value >= HV50_SERIAL_MIN
 
     @property
+    def model(self) -> DeviceModel | None:
+        return DEVICE_MODELS.get(self.device_type)
+
+    @property
     def hv_factor(self) -> float:
         """kV per DAC/ADC volt."""
+        model = self.model
+        if model is not None and model.hv_factor is not None:
+            return model.hv_factor
         return p.HV_FACTOR_50KV if self.is_50kv else p.HV_FACTOR_40KV
 
     @property
@@ -101,19 +139,23 @@ class UnitConfig:
 
     @property
     def hv_min_kv(self) -> float:
-        return HV_MIN_KV
+        model = self.model
+        return HV_MIN_KV if model is None or model.hv_min_kv is None else model.hv_min_kv
 
     @property
     def hv_max_kv(self) -> float:
+        model = self.model
+        if model is not None and model.hv_max_kv is not None:
+            return model.hv_max_kv
         return HV_MAX_KV_50 if self.is_50kv else HV_MAX_KV_40
 
     @property
     def current_min_ua(self) -> float:
-        return CURRENT_MIN_UA
+        return CURRENT_MIN_UA if self.model is None else self.model.current_min_ua
 
     @property
     def current_max_ua(self) -> float:
-        return CURRENT_MAX_UA
+        return CURRENT_MAX_UA if self.model is None else self.model.current_max_ua
 
     @property
     def safe_mw(self) -> float:
@@ -125,7 +167,11 @@ class UnitConfig:
         return self.watt_max_w * 1000.0
 
     def describe(self) -> str:
-        board = "50 kV" if self.is_50kv else "40 kV"
+        model = self.model
+        if model is not None and model.watt_max_w is not None:
+            return (f"Mini-X {self.serial}: {model.controller}, {self.hv_max_kv:g} kV, "
+                    f"{self.watt_max_w:g} W rating")
+        board = f"{self.hv_max_kv:g} kV"
         family = "NSI" if self.is_nsi else "non-NSI"
         return f"Mini-X {self.serial}: {board}, {family}, {self.watt_max_w:g} W rating"
 
@@ -171,12 +217,47 @@ class Settings:
     logging: LoggingConfig = LoggingConfig()
     path: Path | None = None
 
-    def unit(self, serial: str) -> UnitConfig:
-        entry = self.units.get(serial)
-        if entry is None:
-            raise UnitNotConfigured(serial)
-        return UnitConfig(serial=serial, watt_max_w=entry.watt_max_w,
-                          safety_margin_w=self.safety_margin_w, source=entry.source)
+    def unit(self, serial: str, device_type: int | None = None) -> UnitConfig:
+        """The unit's configuration, ignoring any warnings from resolve_unit()."""
+        return self.resolve(serial, device_type)[0]
+
+    def resolve(self, serial: str, device_type: int | None = None) -> tuple[UnitConfig,
+                                                                           list[str]]:
+        return resolve_unit(serial, device_type, self.units.get(serial), self.safety_margin_w)
+
+
+def resolve_unit(serial: str, device_type: int | None, entry: UnitEntry | None,
+                 safety_margin_w: float = SAFETY_MARGIN_W) -> tuple[UnitConfig, list[str]]:
+    """Work out a unit's configuration from the controller and the settings.
+
+    The strapping pins win where they give a rating; a configured rating is
+    a cross-check, and the lower of the two is used if they disagree.
+    Raises UnitNotConfigured when neither gives a rating.
+    """
+    model = DEVICE_MODELS.get(device_type)
+    from_pins = model.watt_max_w if model is not None else None
+    configured = entry.watt_max_w if entry is not None else None
+    warnings: list[str] = []
+    if from_pins is not None and configured is not None and from_pins != configured:
+        watt = min(from_pins, configured)
+        warnings.append(
+            f"the controller reports {model.controller} ({from_pins:g} W) but the "
+            f"configuration says {configured:g} W; using the lower, {watt:g} W. "
+            "Check which is right before running near the limit.")
+        source = (f"lower of controller ({from_pins:g} W) and configuration "
+                  f"({configured:g} W)")
+    elif from_pins is not None:
+        watt = from_pins
+        source = f"controller reports {model.controller}"
+        if configured is not None:
+            source += "; configuration agrees"
+    elif configured is not None:
+        watt = configured
+        source = entry.source or "configuration"
+    else:
+        raise UnitNotConfigured(serial)
+    return UnitConfig(serial=serial, watt_max_w=watt, safety_margin_w=safety_margin_w,
+                      source=source, device_type=device_type), warnings
 
 
 def default_paths() -> list[Path]:

@@ -52,7 +52,7 @@ from functools import partial
 from typing import Any, Protocol
 
 from . import protocol as p
-from .config import ConfigError, Settings, UnitConfig, UnitNotConfigured
+from .config import DEVICE_MODELS, ConfigError, Settings, UnitConfig, UnitNotConfigured
 from .device import (
     DeviceError, FramingError, GpioState, HvEnableError, InterlockOpenError, MiniX,
     NotInitializedError, SyncError, TemperatureError, TemperatureNotConfigured,
@@ -228,28 +228,46 @@ class Session:
             self._event(Level.WARNING, "refused", "already connected")
             return
         try:
-            unit = self._settings.unit(serial)
-        except UnitNotConfigured:
-            self._event(Level.WARNING, "rating_required",
-                        f"Mini-X {serial} has no configured power rating", serial=serial)
-            return
-        except ConfigError as exc:
-            self._event(Level.ERROR, "connect_failed", str(exc))
-            return
-        try:
             transport = self._factory(serial)
         except (TransportError, OSError) as exc:
             self._event(Level.ERROR, "connect_failed", str(exc))
             return
         self._dev = MiniX(transport)
-        self._unit = unit
         self._serial = serial
+        # The controller reports its model on two pins (§2.2), and for the OEM
+        # models that gives the power rating. It has to be read before the
+        # unit's limits are known, so nothing is commanded until it is.
+        try:
+            self._dev.initialize()
+            device_type = self._dev.read_gpio().device_type
+        except (*_DEVICE_LOST, DeviceError) as exc:
+            self._lose_device(f"connection failed: {exc}")
+            return
+        try:
+            unit, warnings = self._settings.resolve(serial, device_type)
+        except UnitNotConfigured:
+            model = DEVICE_MODELS.get(device_type)
+            self._close_device()
+            self._reset()
+            self._event(Level.WARNING, "rating_required",
+                        f"Mini-X {serial} reports {model.controller if model else 'an unknown '
+                        'model'}, which does not state its power rating",
+                        serial=serial, device_type=device_type)
+            self._publish()
+            return
+        except ConfigError as exc:
+            self._close_device()
+            self._reset()
+            self._event(Level.ERROR, "connect_failed", str(exc))
+            return
+        self._unit = unit
         self._dac = DacSetpoints.zero(unit)
         self._range = RangeChecker(unit, self._settings.safety)
         self._band = PowerBandTracker(unit)
         self._state = State.IDLE      # provisional, so failures are handled as faults
+        for warning in warnings:
+            self._event(Level.WARNING, "rating_mismatch", warning)
         try:
-            self._dev.initialize()
             if not self._run_plan(plan_startup(unit), abortable=False):
                 return
             gpio = self._poll_gpio()
@@ -268,7 +286,7 @@ class Session:
         self._next_poll["temp"] = now + FIRST_TEMPERATURE_DELAY_S
         self._event(Level.INFO, "connected", unit.describe(), serial=serial,
                     watt_max_w=unit.watt_max_w, rating_source=unit.source,
-                    safety_margin_w=unit.safety_margin_w)
+                    safety_margin_w=unit.safety_margin_w, device_type=device_type)
         self._publish()
 
     def disconnect(self) -> None:

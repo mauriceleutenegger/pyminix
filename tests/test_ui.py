@@ -11,6 +11,7 @@ from minix.controller import Controller, State
 from minix.discovery import ControllerInfo
 from minix.policy.banding import PowerBand
 from minix.sim import SimHarness
+from minix.transport import TransportError
 from minix.ui import app as app_module
 from minix.ui.bridge import QtBridge
 from minix.ui.dialogs import Confirmer, RatingDialog
@@ -50,9 +51,9 @@ def fast_settings(units=None):
                     polling=PollingConfig(gpio_hz=50, adc_hz=10, temp_hz=2, display_hz=20))
 
 
-def make_gui(qtbot, settings, ask_rating=None):
+def make_gui(qtbot, settings, ask_rating=None, device_type=2):
     sims = []
-    harness = SimHarness(settle_tau_s=0.02, monx_delay_s=0.01)
+    harness = SimHarness(settle_tau_s=0.02, monx_delay_s=0.01, device_type=device_type)
 
     def factory(serial):
         sims.append(harness.create(serial))
@@ -121,7 +122,7 @@ def test_initial_state(gui):
 def test_connect(qtbot, gui):
     connect(qtbot, gui)
     w = gui.window
-    assert w.unit_label.text() == "Mini-X 01300036: 50 kV, NSI, 10 W rating"
+    assert w.unit_label.text() == "Mini-X 01300036: MX50.10, 50 kV, 10 W rating"
     assert "10 W rating" in w.windowTitle()
     assert "setpoint limit 9.95 W" in w.limit_label.text()
     assert (w.kv_spin.minimum(), w.kv_spin.maximum()) == (10.0, 50.0)
@@ -371,7 +372,8 @@ def test_rating_required(qtbot):
         asked.append(serial)
         return 4.0, "label"
 
-    g = make_gui(qtbot, fast_settings(units={}), ask_rating=ask)
+    # A non-OEM controller: the strapping pins do not give the rating.
+    g = make_gui(qtbot, fast_settings(units={}), ask_rating=ask, device_type=3)
     try:
         connect(qtbot, g)
         assert asked == [SERIAL]
@@ -382,11 +384,15 @@ def test_rating_required(qtbot):
 
 
 def test_rating_declined(qtbot):
-    g = make_gui(qtbot, fast_settings(units={}), ask_rating=lambda parent, serial: None)
+    g = make_gui(qtbot, fast_settings(units={}), ask_rating=lambda parent, serial: None,
+                 device_type=3)
     try:
         qtbot.mouseClick(g.window.connect_button, Qt.MouseButton.LeftButton)
         qtbot.waitUntil(lambda: "no power rating" in log_text(g), timeout=WAIT)
-        assert g.saved == [] and g.sims == []
+        assert g.saved == []
+        assert len(g.sims) == 1                    # opened to read the model, then closed
+        with pytest.raises(TransportError):
+            g.sims[0].write(b"\x81")
         assert g.window.connect_button.isEnabled()
     finally:
         g.controller.shutdown()

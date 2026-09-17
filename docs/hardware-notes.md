@@ -226,3 +226,24 @@ fault.
     6 counts.
   - Board heating now has a 10-minute time constant, a guess consistent
     with no visible heating in these short runs.
+
+## 2026-09-17: the controller states its model
+
+The vendor's `Mini-X API OEM MX` package (manual, DLLs and examples, added
+to `reference/`) documents `ReadMinixOemMxDeviceType`. Disassembling the
+2015 `MiniX.dll` debug build showed what it reads: `CMiniXDlg::
+ReadMiniXDeviceType` calls `ReadIOBitsIn(&byte, 2)`, which is the `0x83`
+ACBUS read, and combines two bits:
+
+```
+device type = (ACBUS1 ? 1 : 0) + (ACBUS2 ? 2 : 0)
+```
+
+**sn 01300036 reads ACBUS `0000 0101`: bit 1 clear, bit 2 set, so type 2 =
+MX50.10 = 50 kV, 10 W.** That confirms the rating from the hardware
+itself, and identifies both ACBUS bits that §3 had listed as unused and
+unidentified. The vendor's 2015 manual and examples give each model's
+rating, conversion factor and ranges (docs/protocol.md §2.2).
+
+Only this one controller has been read, and the decoding comes from a
+disassembly, so a configured rating is still kept as a cross-check.

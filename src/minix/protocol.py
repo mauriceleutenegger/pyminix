@@ -36,7 +36,11 @@ ADBUS_INIT = 0xFB & ~HV_EN_BOTH
 # --- ACBUS, high byte (§3) --------------------------------------------------
 
 INTERLOCK = 0x01              # "!RESET" input: 1 = closed, 0 = open (§7.3)
-ACBUS2_UNKNOWN = 0x04         # input, reads set, function unknown
+# ACBUS1 and ACBUS2 are strapping pins giving the controller model (§2.2):
+# device type = (ACBUS1 ? 1 : 0) + (ACBUS2 ? 2 : 0).
+DEVICE_TYPE_BIT0 = 0x02
+DEVICE_TYPE_BIT1 = 0x04
+DEVICE_TYPE_MASK = DEVICE_TYPE_BIT0 | DEVICE_TYPE_BIT1
 TSCS = 0x08                   # DS1722 chip enable, ACTIVE HIGH
 
 ACBUS_DIRECTION = 0x08        # only TSCS is an output

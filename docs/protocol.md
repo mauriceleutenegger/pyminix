@@ -7,7 +7,7 @@
 | Document date | 13 August 2026; revised 17 September 2026 |
 | Reference source | Amptek Mini-X DLL source, `MiniXDlg.cpp` / `MiniXDlg.h`, board revision C0. Kept locally in `reference/`; not in the repository, because it is proprietary. |
 | Validated on | Mini-X Controller, serial `01300036`, 50 kV board, 10 W rating (from the unit's hardware documentation, not from software); macOS, pyftdi |
-| Status | DAC, ADC, GPIO, HV enable and the DS1722 confirmed on hardware (§8.4, §10). The full sequences, including HV on and off with X-ray output confirmed by a radiation monitor, have been run at 15 kV / 10–15 µA (§10.7). Nothing has been exercised near the power limit (§10.5). |
+| Status | DAC, ADC, GPIO, HV enable and the DS1722 confirmed on hardware (§8.4, §10). The controller's model pins give the power rating (§2.2), recovered from the vendor DLL and checked on one unit. The full sequences, including HV on and off with X-ray output confirmed by a radiation monitor, have been run at 15 kV / 10–15 µA (§10.7). Nothing has been exercised near the power limit (§10.5). |
 
 **About this revision.** The first version was reconstructed from an excerpt of `MiniXDlg.cpp`. This revision checks it against the full source and against hardware runs of this project's code; the run log is in [hardware-notes.md](hardware-notes.md). §13 lists what changed. Where it matters, the text says whether a statement comes from the **source**, from **hardware** observation, or is this project's **recommendation**. A recommendation is not vendor behaviour.
 
@@ -70,9 +70,30 @@ Serial `01300036` → `1300036` → **NSI, 50 kV**.
 
 **The serial number does not encode the power rating.** Both setup routines contain `WattageMax = 4.00` as a literal. No serial-number threshold, strapping pin or register reports the rating. Voltage range and power rating are **independent** settings, and only the voltage range can be discovered at runtime.
 
-**The rating must therefore come from outside the protocol**: the hardware label, the shipping documentation, or the vendor. Do not infer it. See §6.1.1.
+**On a non-OEM controller the rating must come from outside the protocol**: the hardware label, the shipping documentation, or the vendor. On an OEM controller the model pins give it (§2.2). See §6.1.1.
 
 *Unexplored:* `MiniXDlg.h` declares `EE_Read` / `EE_Program` wrappers for the FT2232 EEPROM, which the reference never uses for configuration. Whether the vendor stores a rating in the EEPROM user area is unknown. A read-only dump would settle it; until then, treat the EEPROM as a curiosity, not a source of truth.
+
+### 2.2 The controller states its model on two pins
+
+**Source and hardware.** Two ACBUS inputs carry a model code, which the vendor's API exposes as `ReadMinixOemMxDeviceType`:
+
+```
+device type = (ACBUS1 set ? 1 : 0) + (ACBUS2 set ? 2 : 0)
+```
+
+| Type | Controller | Tube | Rating | HV factor | HV range | Current range |
+|---|---|---|---|---|---|---|
+| 0 | MX70 | Mini-X-OEM 70 kV | 10 W | 20.0 kV/V | 35 – 70 kV | 10 – 143 µA |
+| 1 | MX50 | Mini-X-OEM 50 kV | 4 W | 12.5 kV/V | 10 – 50 kV | 5 – 200 µA |
+| 2 | MX50.10 | Mini-X-OEM 50 kV | 10 W | 12.5 kV/V | 10 – 50 kV | 5 – 200 µA |
+| 3 | Mini-X (non-OEM) | 40 kV or 50 kV, by serial (§2.1) | **not stated** | from §2.1 | from §2.1 | 5 – 200 µA |
+
+**So the power rating is discoverable on an OEM controller**, which contradicts the first version of this document (§6.1.1). A non-OEM controller reports type 3, which the vendor's table equates with 4 W, but the pins cannot distinguish a 4 W unit from a 10 W one, so the rating still has to be supplied there.
+
+**Provenance.** The type-to-model table is from the *Mini-X API Programming Guide* (2015) and its Visual Basic and C++ examples, which list each model's rating, conversion factor and ranges. **The decoding itself was recovered by disassembling the vendor's `MiniX.dll`** (2015 debug build, with its linker map): the exported `ReadMinixOemMxDeviceType` returns a field of the dialog object, set by `CMiniXDlg::ReadMiniXDeviceType`, which calls `ReadIOBitsIn(&byte, 2)` — the `0x83` ACBUS read — and combines bits 1 and 2 as above. It is an inference from a disassembly, checked on one controller (sn `01300036`, ACBUS `0000 0101` → type 2 = MX50.10, 50 kV, 10 W, which matches that unit's documentation). Confirm it with Amptek before relying on it for a different unit.
+
+**This project** reads the type at connect and prefers it. A configured rating is a cross-check: if the two disagree, the **lower** is used and a warning is issued (§6.1.1).
 
 ---
 
@@ -102,8 +123,8 @@ The two constants are identical in revision C0, so the direction byte never chan
 | Bit | Mask | Name | Dir | Function |
 |---|---|---|---|---|
 | 3 | `0x08` | TSCS | Out | Temp sensor chip enable (active **high**) |
-| 2 | `0x04` | ? | In | **Unidentified**; always read set |
-| 1 | `0x02` | — | — | not used |
+| 2 | `0x04` | model bit 1 | In | Controller model, high bit (§2.2) |
+| 1 | `0x02` | model bit 0 | In | Controller model, low bit (§2.2) |
 | 0 | `0x01` | !RESET | In | Interlock: 1 = closed, 0 = open (§7.3) |
 
 Direction byte: **`OUTPUTMODE_H = 0x08`**. Only ACBUS3 is an output.
@@ -192,7 +213,7 @@ The source gives no reason for the repetition. `SetTempSensor()` sends its own c
 
 ### 6.1 Scaling constants
 
-Three parameters vary between units. The serial number selects two of them; the third, the power rating, is not discoverable at runtime.
+Three parameters vary between units. The serial number selects two of them (§2.1); the power rating comes from the model pins on an OEM controller and otherwise has to be configured (§2.2, §6.1.1).
 
 **Voltage range (from `is50kv`)**
 
@@ -220,7 +241,7 @@ The minima are stored as 9.999999 and 4.999999, not 10.0 and 5.0. Values are cla
 
 #### 6.1.1 Power rating
 
-The vendor ships both 4 W and 10 W variants. **The rating is a compile-time literal in the reference and cannot be discovered at runtime** (§2.1).
+The vendor ships both 4 W and 10 W variants. **The reference application uses a compile-time literal of 4.00 W and never reads the model pins**, but an OEM controller does state its rating (§2.2). A non-OEM controller does not.
 
 | Constant | 4 W variant | 10 W variant |
 |---|---|---|
@@ -242,7 +263,7 @@ The source contains only the 4 W values. The 10 W column substitutes `WattageMax
 
 **When the rating is not confirmed, assume 4.00 W.**
 
-**Recommendation.** Carry no default. Require the rating at construction, accept only 4.0 or 10.0, and refuse to open the device otherwise. Store the rating with the serial number in the configuration file. **Display it persistently** next to the power indicator, log it at startup, and include it in every run record.
+**Recommendation.** Read the model pins (§2.2) at connect and take the rating from them where they give one. Treat a configured rating as a cross-check: if the two disagree, use the **lower**, say so, and have someone establish which is right. Where the pins give no rating, require one in the configuration, accept only 4.0 or 10.0, and refuse to open the device otherwise. **Display the rating persistently** next to the power indicator, with where it came from; log it at startup and include it in every run record.
 
 The source's own history supports a configuration file. A commented-out `ReadMiniXSetup()` once read `Wattage Max`, `Safety Margin`, `High Voltage kV Max` and the conversion factors from `MiniXCtrl.ini`; the two hardcoded setup functions replaced it.
 
@@ -453,7 +474,7 @@ ACBUS0 (`!RESET`, `0x01`): **1 = closed (safe to operate), 0 = open.** The sourc
 
 The interlock is polled in the monitor loop, so the reference responds within about **1 s** (§6.4). During an NSI setpoint commit the commit loop calls the monitor routine directly, so polling continues. The non-NSI commit path does not poll for about 2 s. None of this is an asynchronous cutout; the hardware presumably enforces its own. Do not present the software interlock to users as instantaneous.
 
-ACBUS2 (`0x04`) always reads set; its function is unknown. ACBUS3 is TSCS, **active high**, and is the only output in the high byte.
+ACBUS1 and ACBUS2 carry the controller model (§2.2); on sn `01300036` they read `10`, i.e. type 2. ACBUS3 is TSCS, **active high**, and is the only output in the high byte.
 
 ---
 
@@ -753,7 +774,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | DS1722 config `0xE3` | The meaning assumes the datasheet bit layout; unverified. How the register reached that value is unknown. |
 | ADC part number | Behaves like an MCP3202/LTC1298-type part, not a MAX186 (§6.3). Unconfirmed; irrelevant to the implementation. |
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
-| ACBUS2 (`0x04`) | Always reads set. Function unknown. |
+| Model pins (§2.2) | The decoding is an inference from a disassembly of the vendor DLL, checked on one controller. Confirm with Amptek. The ratings and ranges per model come from the vendor's 2015 manual and examples; only MX50.10 has been seen. |
 | Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source and tested only against the simulator. **Test it deliberately before relying on it.** On sn `01300036` the interlock is shorted, so it cannot be tested there. |
 | MONX meaning | Asserts within about 1 s of enabling (§10.7) but flickers at emission currents of about 190 µA and above while the output is unaffected (§10.8). What it signals is unknown, as is whether it asserts with zero setpoints. A question for Amptek. |
 | Double startup (§5.2) | Present in source; reason unknown. |
@@ -803,3 +824,4 @@ Additions:
 - **§10.6** The September read-only checks.
 - **§10.7** The first energized session through this project's software: ramp and MONX timing, noise with HV on, and the discharge tail after switch-off.
 - **§10.8** Full power: MONX flicker at high emission current, and power-indicator flicker from measurement noise. §7.2 no longer calls MONX a reliable continuous ready signal; §6.4 and §7.2 describe how this project handles both.
+- **§2.2** The controller states its model, and with it the power rating and voltage range, on two pins — the ones §3 listed as unused and unidentified. This corrects the first version's central claim that the rating cannot be discovered at runtime (§2.1, §6.1.1).

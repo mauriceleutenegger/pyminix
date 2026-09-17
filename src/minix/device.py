@@ -101,6 +101,12 @@ class GpioState:
         return not (self.hv_enabled or self.hv_disabled)
 
     @property
+    def device_type(self) -> int:
+        """Controller model from the two strapping pins, 0-3 (§2.2)."""
+        return ((self.acbus & p.DEVICE_TYPE_BIT0 and 1)
+                + (self.acbus & p.DEVICE_TYPE_BIT1 and 2))
+
+    @property
     def tube_ready(self) -> bool:
         """MONX: the supply is up (§7.2)."""
         return bool(self.adbus & p.MONX)

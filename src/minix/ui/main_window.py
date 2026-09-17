@@ -446,7 +446,7 @@ class MainWindow(QMainWindow):
         text = unit.describe()
         self.unit_label.setText(text)
         self._set_title(f"Mini-X controller — {text}")
-        self.limit_label.setText(f"rating {unit.watt_max_w:g} W, "
+        self.limit_label.setText(f"rating {unit.watt_max_w:g} W ({unit.source}), "
                                  f"setpoint limit {unit.safe_mw / 1000:.2f} W")
         for spin, low, high, default in ((self.kv_spin, unit.hv_min_kv, unit.hv_max_kv, DEFAULT_KV),
                                          (self.ua_spin, unit.current_min_ua,

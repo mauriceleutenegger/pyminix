@@ -83,6 +83,7 @@ class SimTransport:
         seed: int | None = 0,
         settle_tau_s: float = SETTLE_TAU_S,
         monx_delay_s: float = 0.3,
+        device_type: int = 2,       # MX50.10: 50 kV, 10 W, as on sn 01300036
         ambient_c: float = 27.0,
         heating_c_per_w: float = 0.5,
         noise: bool = True,
@@ -91,6 +92,7 @@ class SimTransport:
         self._clock = clock
         self._rng = random.Random(seed)
         self.hv_factor = hv_factor
+        self.device_type = device_type
         self.settle_tau_s = settle_tau_s
         self.monx_delay_s = monx_delay_s
         self.ambient_c = ambient_c
@@ -278,7 +280,7 @@ class SimTransport:
         return value
 
     def _read_acbus(self) -> int:
-        value = (self.acbus & p.ACBUS_DIRECTION) | p.ACBUS2_UNKNOWN
+        value = (self.acbus & p.ACBUS_DIRECTION) | (self.device_type << 1) & p.DEVICE_TYPE_MASK
         if self.interlock_closed:
             value |= p.INTERLOCK
         if self.noise:

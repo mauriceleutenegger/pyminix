@@ -42,15 +42,16 @@ class Confirmer:
 
 
 class RatingDialog(QDialog):
-    """Ask for a unit's power rating, which cannot be read from the device."""
+    """Ask for a unit's power rating, when the controller does not state it."""
 
     def __init__(self, serial: str, parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle(f"Power rating for Mini-X {serial}")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            f"<p>Mini-X <b>{serial}</b> has no configured power rating. The rating cannot be "
-            "read from the controller; take it from the unit's label or documentation.</p>"
+            f"<p>Mini-X <b>{serial}</b> has no configured power rating. This controller does "
+            "not state its rating (OEM controllers do); take it from the unit's label or "
+            "documentation.</p>"
             "<p>Setting 10 W on a 4 W unit would allow the tube to be driven at 2.5 times its "
             "rating. <b>If you are unsure, choose 4 W</b>: under-stating the rating only "
             "limits the output.</p>")

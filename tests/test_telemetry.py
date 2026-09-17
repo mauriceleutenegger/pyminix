@@ -84,9 +84,10 @@ def test_run_record(recorder, clock, tmp_path):
     header, samples = read(samples_path)
     assert "serial: 01300036" in header
     assert "power rating W: 10.0" in header
-    assert "rating source: label on the unit" in header
+    assert "rating source: controller reports MX50.10; configuration agrees" in header
+    assert "device type: 2" in header
     assert "safety margin W: 0.05" in header
-    assert "unit: Mini-X 01300036: 50 kV, NSI, 10 W rating" in header
+    assert "unit: Mini-X 01300036: MX50.10, 50 kV, 10 W rating" in header
     assert f"software: {software_version()}" in header
     assert list(samples[0]) == SAMPLE_COLUMNS
 
@@ -134,8 +135,9 @@ def test_new_file_per_connection(recorder, clock):
 
 
 def test_nothing_recorded_outside_a_run(recorder, clock, tmp_path):
-    session = make_session(clock, recorder)
-    session.connect("09999999")                      # rating required: no run
+    # A non-OEM controller with no configured rating: asked for, not connected.
+    session = make_session(clock, recorder, SimTransport("09999999", clock=clock, device_type=3))
+    session.connect("09999999")
     assert not recorder.recording
     assert not (tmp_path / "runs").exists()
 

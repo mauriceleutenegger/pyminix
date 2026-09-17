@@ -121,6 +121,7 @@ class RunRecorder:
             f"started: {started.isoformat(timespec='seconds')}",
             f"serial: {serial}",
             f"unit: {event.message}",
+            f"device type: {event.data.get('device_type', 'unknown')}",
             f"power rating W: {event.data.get('watt_max_w', 'unknown')}",
             f"rating source: {event.data.get('rating_source') or 'not recorded'}",
             f"safety margin W: {event.data.get('safety_margin_w', 'unknown')}",

@@ -25,6 +25,7 @@ import sys
 import time
 
 from minix import protocol as p
+from minix.config import DEVICE_MODELS
 from minix.device import DeviceError, FramingError, MiniX
 from minix.discovery import list_controllers
 from minix.sim import SimTransport
@@ -71,6 +72,12 @@ def main() -> int:
     try:
         dev.initialize()
         print("initialized; MPSSE sync OK")
+        device_type = dev.read_gpio().device_type
+        model = DEVICE_MODELS.get(device_type)
+        rating = "not stated by the controller" if model is None or model.watt_max_w is None \
+            else f"{model.watt_max_w:g} W"
+        print(f"device type {device_type}: {model.controller if model else 'unknown'}, "
+              f"rating {rating}")
         if args.temp:
             dev.configure_temperature_sensor()
             time.sleep(1.5)  # a 12-bit conversion takes up to ~1.2 s

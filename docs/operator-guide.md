@@ -82,12 +82,16 @@ States shown on the right of the unit line:
 
 ### 5.1 The power rating
 
-The Mini-X is made in **4 W** and **10 W** versions: the most power (voltage × current) the tube may be run at. The controller cannot report which version it is, so the program asks the first time a controller with a given serial number is connected on this computer.
+The Mini-X is made in **4 W** and **10 W** versions: the most power (voltage × current) the tube may be run at.
 
-- **Take the rating from the unit's label or documentation.** If you are unsure, choose **4 W**. A 4 W setting on a 10 W unit only limits the output; a 10 W setting on a 4 W unit would let the tube be over-driven.
-- **Say where the rating came from** (e.g. "label on the unit"), tick the confirmation box, and press **Save**.
-- **The answer is stored** in `~/.config/minix/units.toml` and used on every later connection, so you are not asked again. To change it, edit that file (look for the unit's serial number) and restart the program.
-- **In simulation mode** the answer is not stored, and you are asked each time.
+- **Most controllers state their model**, and with it the rating and voltage range. The program reads it when connecting and shows it beside the rating, e.g. *rating 10 W (controller reports MX50.10)*. Nothing needs configuring.
+- **Some controllers do not state a rating** (the older non-OEM Mini-X). The program then asks the first time that serial number is connected on this computer.
+  - **Take the rating from the unit's label or documentation.** If you are unsure, choose **4 W**. A 4 W setting on a 10 W unit only limits the output; a 10 W setting on a 4 W unit would let the tube be over-driven.
+  - **Say where it came from** (e.g. "label on the unit"), tick the confirmation box, and press **Save**. The answer goes into `~/.config/minix/units.toml` and is used from then on.
+- **If a stored rating disagrees with the controller**, the program uses the **lower** of the two and logs a warning. Find out which is right before running near the limit.
+- **To change a stored rating**, edit that file (look for the unit's serial number) and restart the program.
+- **In simulation mode** an entered rating is not stored, so you are asked each time.
+- **How the rating is known** was worked out from Amptek's own software and checked on one unit, so treat a surprising rating as a question for Amptek rather than as fact.
 
 ### 5.2 Limits
 

@@ -38,6 +38,7 @@ class FakeTransport:
         self.enable_readback: int | None = None  # force the HV bits on readback
         self.sync_broken = False
         self.acbus_noise = 0x00  # bits 4-7 read back arbitrary values
+        self.device_type = 2     # MX50.10, as on sn 01300036
         self.fail_writes = False
         self.closed = False
 
@@ -71,7 +72,8 @@ class FakeTransport:
                     value = (value & ~p.HV_EN_BOTH) | self.enable_readback
                 rx.append(value)
             elif cmd.op == p.GET_ACBUS:
-                value = (self.acbus & p.ACBUS_DIRECTION) | p.ACBUS2_UNKNOWN | self.acbus_noise
+                value = ((self.acbus & p.ACBUS_DIRECTION) | self.acbus_noise
+                         | (self.device_type << 1) & p.DEVICE_TYPE_MASK)
                 if self.interlock_closed:
                     value |= p.INTERLOCK
                 rx.append(value)

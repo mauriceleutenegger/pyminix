@@ -54,8 +54,17 @@ beside each commit.
 
 ## Power rating
 
-The unit's power rating (4 W or 10 W) **cannot be read from the device** (§2.1).
-It must come from the unit's label or documentation. On first connection to
-an unknown unit the GUI asks for it, defaulting to the safe 4 W, and stores it
-in the configuration file with its source; the controller refuses to open a
-unit without a rating.
+An OEM controller (MX50, MX50.10, MX70) states its model, and with it the
+power rating and voltage range, on two strapping pins, which this software
+reads at connect (docs/protocol.md §2.2). A non-OEM Mini-X controller does
+not: there the rating must be configured, and on first connection the GUI
+asks for it, defaulting to the safe 4 W and recording where the answer came
+from. A configured rating is also a cross-check: if it disagrees with the
+controller, the **lower** of the two is used and a warning is logged.
+
+> **Caveat.** The pin decoding was inferred by disassembling Amptek's
+> `MiniX.dll`, and the model-to-rating table comes from their 2015 API
+> manual and examples. It has been checked on exactly one controller
+> (sn `01300036`, which reads MX50.10: 50 kV, 10 W, matching its
+> documentation). Confirm it with Amptek before relying on it for another
+> unit, and keep a configured rating as a cross-check.

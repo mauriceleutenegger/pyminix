@@ -119,12 +119,51 @@ def on(session, clock, sim):
 
 # --- connecting --------------------------------------------------------------
 
-def test_unconfigured_unit_is_not_opened(session, rec):
-    session.connect("09999999")
+def test_rating_from_the_controller(session, clock, sim, rec):
+    # The strapping pins say MX50.10, so no configured rating is needed.
+    session._settings = Settings(units={})
+    connect(session, clock)
+    unit = session.status().unit
+    assert (unit.watt_max_w, unit.device_type) == (10.0, 2)
+    assert unit.source == "controller reports MX50.10"
+    assert rec.last("connected").data["device_type"] == 2
+
+
+def test_configured_rating_agrees(session, clock, rec):
+    connect(session, clock)
+    assert session.status().unit.source.endswith("configuration agrees")
+    assert "rating_mismatch" not in rec.kinds()
+
+
+def test_lower_rating_wins_when_they_disagree(clock, sim, rec):
+    session = make_session(clock, sim, rec, settings(watts=4.0))
+    connect(session, clock)
+    unit = session.status().unit
+    assert unit.watt_max_w == 4.0                    # controller says 10 W
+    assert "using the lower, 4 W" in rec.last("rating_mismatch").message
+    assert rec.last("rating_mismatch").level is Level.WARNING
+
+
+def test_non_oem_controller_needs_a_configured_rating(clock, rec):
+    sim = SimTransport(SERIAL, clock=clock, device_type=3)
+    session = make_session(clock, sim, rec, Settings(units={}))
+    session.connect(SERIAL)
     assert session.state is State.DISCONNECTED
-    assert session.opened == []
+    assert not session.status().connected
     event = rec.last("rating_required")
-    assert event.data["serial"] == "09999999"
+    assert event.data == {"serial": SERIAL, "device_type": 3}
+    assert "Mini-X" in event.message
+    with pytest.raises(TransportError):              # the device was closed again
+        sim.write(bytes([p.GET_ADBUS]))
+
+
+def test_non_oem_controller_uses_the_configured_rating(clock, rec):
+    sim = SimTransport(SERIAL, clock=clock, device_type=3)
+    session = make_session(clock, sim, rec, settings(watts=4.0))
+    connect(session, clock)
+    unit = session.status().unit
+    assert (unit.watt_max_w, unit.hv_max_kv, unit.device_type) == (4.0, 50.0, 3)
+    assert unit.source == "test"
 
 
 def test_connect(session, clock, sim, rec):

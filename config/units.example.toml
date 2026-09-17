@@ -3,12 +3,15 @@
 # Copy to ~/.config/minix/units.toml or config/units.toml (checked in that
 # order).
 #
-# watt_max_w is REQUIRED per unit and must be 4.0 or 10.0, taken from the
-# unit's hardware documentation. It cannot be read from the device (§2.1).
+# An OEM controller (MX50, MX50.10, MX70) states its model, and with it the
+# power rating and voltage range, on two strapping pins (§2.2), so no entry
+# is needed here. A non-OEM Mini-X controller does not, and then watt_max_w
+# is REQUIRED: 4.0 or 10.0, from the unit's label or documentation (§6.1.1).
 # If you are unsure, use 4.0: over-stating the rating permits over-driving
-# the tube; under-stating it only costs flux (§6.1.1).
-# The voltage range and HV conversion factor follow from the serial number
-# (§2.1) and are not configurable.
+# the tube; under-stating it only costs flux.
+#
+# An entry is also a cross-check: if it disagrees with the controller, the
+# LOWER of the two is used and a warning is logged.
 
 [units."01300036"]
 watt_max_w = 10.0
