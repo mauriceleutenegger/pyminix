@@ -24,7 +24,8 @@ imitated. Tests should assert that list is empty.
 the supply was enabled, including intermediate states between two DAC
 writes, so tests can check sequencing against the power limit.
 
-Fault injection: `fail_io`, `stuck_enable_readback`, and `drop_reply_bytes`.
+Fault injection: `fail_io`, `stuck_enable_readback`, `drop_reply_bytes`,
+and `adc_framing_errors` (the next n ADC replies have the null bit set).
 Set `interlock_closed` (or call `set_interlock`) from any thread to
 simulate the interlock.
 """
@@ -83,6 +84,7 @@ class SimTransport:
         self.fail_io = False
         self.stuck_enable_readback: int | None = None
         self.drop_reply_bytes = 0
+        self.adc_framing_errors = 0
 
         # Pins as driven by the host. Before MPSSE setup the outputs are off.
         self.adbus = 0x00
@@ -319,6 +321,9 @@ class SimTransport:
                 return bytes(2)
             counts = self._adc_counts(self._adc_channel)
             raw = counts << 3 | _trailing_bits(counts)
+            if self.adc_framing_errors > 0:
+                self.adc_framing_errors -= 1
+                raw |= 0x8000
             return raw.to_bytes(2, "big")
         self._violation(f"ADC selected for {cmd.op:#04x}")
         return bytes(cmd.read_len)

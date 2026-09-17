@@ -72,6 +72,10 @@ class TemperatureError(DeviceError):
     """A DS1722 reply that cannot be a real temperature."""
 
 
+class TemperatureNotConfigured(TemperatureError):
+    """The DS1722 is not in continuous 12-bit mode, e.g. after a power-up."""
+
+
 @dataclass(frozen=True)
 class GpioState:
     adbus: int
@@ -367,7 +371,7 @@ class MiniX:
             raise TemperatureError(
                 f"DS1722 config byte {config:#04x} lacks its fixed bits; frame misaligned")
         if config != p.TS_CONFIG_12BIT_CONTINUOUS:
-            raise TemperatureError(
+            raise TemperatureNotConfigured(
                 f"DS1722 config is {config:#04x}, not {p.TS_CONFIG_12BIT_CONTINUOUS:#04x}; "
                 "the sensor is not configured and its reading may be stale")
         return decode_temperature_c(msb=msb, lsb=lsb)
