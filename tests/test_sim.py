@@ -242,16 +242,17 @@ def test_reading_before_first_conversion_is_the_old_value(dev, clock):
 
 
 def test_board_heats_slowly_with_tube_power(sim, dev, clock):
+    # §10.9: 8 W raised the board 1.75 °C in 39 min, still rising.
     dev.configure_temperature_sensor()
-    energize(dev, clock, kv=40, ua=100)              # 4 W -> +2 °C eventually
-    for _ in range(60):                              # a minute: barely warmer
-        clock.advance(1)
+    energize(dev, clock, kv=40, ua=200)
+    for _ in range(39):
+        clock.advance(60)
         sim.advance()
-    assert dev.read_temperature_c() == pytest.approx(27.0, abs=0.25)
-    for _ in range(360):                             # an hour
+    assert dev.read_temperature_c() == pytest.approx(27.0 + 1.75, abs=0.2)
+    for _ in range(360):                             # an hour: near equilibrium
         clock.advance(10)
         sim.advance()
-    assert dev.read_temperature_c() == pytest.approx(29.0, abs=0.1)
+    assert dev.read_temperature_c() == pytest.approx(27.0 + 0.23 * 8, abs=0.2)
 
 
 def test_config_is_volatile(clock):

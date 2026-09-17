@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyftdi.ftdi import Ftdi, FtdiError
-from usb.core import USBError
+from pyftdi.ftdi import Ftdi
+from pyftdi.usbtools import UsbTools
 
 from . import protocol as p
 
@@ -32,11 +32,18 @@ def register_usb_ids() -> None:
 
 
 def list_controllers() -> list[ControllerInfo]:
-    """Return the attached Mini-X controllers, sorted by serial number."""
+    """Return the attached Mini-X controllers, sorted by serial number.
+
+    Call this with no controller open: it clears pyftdi's enumeration
+    cache, which otherwise keeps a controller at its old USB address after
+    it has been unplugged and plugged back in ("USB Error 19: device may
+    have been disconnected").
+    """
     register_usb_ids()
+    UsbTools.flush_cache()
     try:
         found = Ftdi.list_devices()
-    except (FtdiError, USBError) as exc:
+    except (OSError, ValueError) as exc:     # FtdiError, USBError, "No such device"
         raise OSError(f"USB enumeration failed: {exc}") from exc
     controllers = [
         ControllerInfo(serial=desc.sn or "", description=desc.description or "",

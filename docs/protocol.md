@@ -457,6 +457,8 @@ Observed values, serial 01300036:
 
 **Recommendation.** Treat a state with only one bit set as a fault. Confirm every change by readback (§9.2).
 
+**On USB loss the controller drops HV by itself** (hardware, §10.9): unplugging the cable with HV on stopped the X-rays immediately. Leaving MPSSE mode releases the enable pins, and the host cannot confirm anything afterwards, so software should still report that the tube must be checked.
+
 **MONX (`0x80`, ADBUS7) is a live status input** (hardware). It reads 0 with HV off and asserts within about a second of switching on. **At high emission current (about 190 µA and above) it drops briefly and often while HV is on, although the HV and current readings stay on target** (§10.8). It is therefore not a reliable continuous "tube ready" signal, and its exact meaning is unknown. The reference only displays it and never acts on it. **Recommendation:** require MONX to assert at least once shortly after the setpoints are reached, and treat a later drop as information, not as a fault. Whether MONX asserts with zero setpoints is unknown (§12).
 
 **This project** requires MONX within `monx_timeout_s` (1 s) after the ramp, or it faults and switches HV off. While HV is on, each drop is counted (the count is in the status and the run record) and brief drops are summarized once a minute. A warning is raised only when MONX stays low for `monx_warning_s` (1 s), with a follow-up when it returns. The GUI's tube-ready lamp shows the drop count and turns amber only for a sustained drop.
@@ -738,6 +740,17 @@ Short runs at 50 kV / 198.95 µA (9.95 W; a 200 µA request reduced by the power
 - **Measured power noise (about 50 mW) crosses the band thresholds** at full power, so a single-reading power indicator (§6.4) flickers between normal, caution and danger. The power range check (< 10050 mW) never tripped; the highest single reading was 10007 mW.
 - **Board temperature** stayed near 27 °C during these short runs.
 
+### 10.9 Long run and shutdown paths (September 2026)
+
+A 39-minute run at 40 kV / 200 µA (8 W) through this project's GUI, plus deliberate tests of the shutdown paths. The interlock could not be tested: it is shorted on this unit (§12).
+
+- **Board temperature rose 1.75 °C**, from 26.0 to 27.75 °C, and was still rising. A first-order fit gives a **17-minute time constant and 0.23 °C/W** (rms 0.09 °C), so about +2.3 °C at 10 W in equilibrium. The sensor is on the controller board, not the tube.
+- **Readback held steady** over the whole run: 39.82 ± 0.17 kV and 199.5 µA, every sample in range, the band green throughout.
+- **MONX dropped 3301 times** in 39 minutes at 200 µA, about 1.4 times a second, with no effect on the readings (§10.8).
+- **Emergency stop** switched the X-rays off immediately, confirmed with a radiation monitor.
+- **Unplugging USB with HV on stopped the X-rays immediately.** The controller drops the high voltage by itself when the host disappears, which is what leaving MPSSE mode would do to the enable pins. The software reports a lost controller and cannot confirm the enables, so it still says to check the tube.
+- **After a power cycle**, connecting re-configured the DS1722 and the temperature appeared within a couple of seconds, which exercises the configuration write on a sensor that has just lost its settings (§8.4).
+
 ---
 
 ## 11. Transaction serialization
@@ -770,7 +783,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 
 | Item | Status |
 |---|---|
-| DS1722 write after power-up | Confirmed with the probe. This project's own `configure_temperature_sensor()` sends the same bytes but has not yet been run on a freshly powered, unconfigured sensor. |
+| DS1722 write after power-up | Confirmed: after a power cycle, connecting reconfigured the sensor and the temperature appeared within seconds (§10.9). |
 | DS1722 config `0xE3` | The meaning assumes the datasheet bit layout; unverified. How the register reached that value is unknown. |
 | ADC part number | Behaves like an MCP3202/LTC1298-type part, not a MAX186 (§6.3). Unconfirmed; irrelevant to the implementation. |
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
@@ -823,5 +836,6 @@ Additions:
 - **§9.2** Failsafe on any I/O error, and DACs left at their minima on close.
 - **§10.6** The September read-only checks.
 - **§10.7** The first energized session through this project's software: ramp and MONX timing, noise with HV on, and the discharge tail after switch-off.
+- **§10.9** A 39-minute run at 8 W (thermal fit), and the shutdown paths: emergency stop, USB unplug (the controller drops HV itself, §7.2), and a power cycle (§8.4).
 - **§10.8** Full power: MONX flicker at high emission current, and power-indicator flicker from measurement noise. §7.2 no longer calls MONX a reliable continuous ready signal; §6.4 and §7.2 describe how this project handles both.
 - **§2.2** The controller states its model, and with it the power rating and voltage range, on two pins — the ones §3 listed as unused and unidentified. This corrects the first version's central claim that the rating cannot be discovered at runtime (§2.1, §6.1.1).

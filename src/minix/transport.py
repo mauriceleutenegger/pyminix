@@ -23,6 +23,8 @@ from typing import Protocol
 from pyftdi.ftdi import Ftdi, FtdiError
 from usb.core import USBError
 
+from pyftdi.usbtools import UsbTools
+
 from . import protocol as p
 from .discovery import register_usb_ids
 
@@ -61,6 +63,10 @@ class FtdiTransport:
     def open(cls, serial: str) -> FtdiTransport:
         """Open the controller with this USB serial number and enter MPSSE mode."""
         register_usb_ids()
+        # Forget where the controller was last seen: after a replug it may be
+        # at a different USB address, and a stale entry fails with "no such
+        # device". Open devices are tracked separately, so this is safe.
+        UsbTools.flush_cache()
         ftdi = Ftdi()
         try:
             ftdi.open(p.USB_VID, p.USB_PID, serial=serial, interface=p.USB_INTERFACE)

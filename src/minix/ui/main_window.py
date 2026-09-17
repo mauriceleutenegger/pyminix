@@ -296,8 +296,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         status = self._status
         hv_may_be_on = status is not None and (status.state in HV_ACTIVE or status.enables_on)
+        # Not revocable: this question is asked because HV is on, so the
+        # status updates that withdraw an HV-on prompt must not cancel it.
         if hv_may_be_on and not self._confirmer.confirm(
-                self, "Quit", "HV is on. Switch it off and quit?"):
+                self, "Quit", "HV is on. Switch it off and quit?", revocable=False):
             event.ignore()
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

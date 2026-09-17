@@ -3,6 +3,11 @@
 Confirmer asks yes/no questions. revoke() answers an open question with
 "no", so the window can withdraw an HV-on prompt the moment the interlock
 opens (§7.3); a revoked question returns False however it was answered.
+
+Only questions asked with revocable=True can be withdrawn. The prompt
+before quitting with HV on is asked with revocable=False: it is shown
+*because* HV is on, so the status updates that withdraw an HV-on prompt
+must not cancel it.
 """
 
 from __future__ import annotations
@@ -19,12 +24,14 @@ class Confirmer:
     def __init__(self):
         self._box: QMessageBox | None = None
         self._revoked = False
+        self._revocable = True
 
-    def confirm(self, parent: QWidget, title: str, text: str) -> bool:
+    def confirm(self, parent: QWidget, title: str, text: str, revocable: bool = True) -> bool:
         box = QMessageBox(QMessageBox.Icon.Warning, title, text,
                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, parent)
         box.setDefaultButton(QMessageBox.StandardButton.No)
         self._box, self._revoked = box, False
+        self._revocable = revocable
         try:
             answer = box.exec()
         finally:
@@ -32,7 +39,7 @@ class Confirmer:
         return answer == QMessageBox.StandardButton.Yes and not self._revoked
 
     def revoke(self) -> None:
-        if self._box is not None:
+        if self._box is not None and self._revocable:
             self._revoked = True
             self._box.done(QMessageBox.StandardButton.No)
 

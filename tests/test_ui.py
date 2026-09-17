@@ -28,10 +28,12 @@ class FakeConfirmer:
         self.questions = []
         self.revoked = False
         self.open = False
+        self.revocable = True
         self.while_open = None
 
-    def confirm(self, parent, title, text):
+    def confirm(self, parent, title, text, revocable=True):
         self.questions.append((title, text))
+        self.revocable = revocable
         self.open, self.revoked = True, False
         try:
             if self.while_open:
@@ -41,7 +43,7 @@ class FakeConfirmer:
         return self.answer and not self.revoked
 
     def revoke(self):
-        if self.open:
+        if self.open and self.revocable:
             self.revoked = True
 
 
@@ -398,6 +400,25 @@ def test_rating_declined(qtbot):
         g.controller.shutdown()
 
 
+def test_closing_with_hv_on_is_not_withdrawn_by_status_updates(qtbot, gui):
+    # The prompt is shown because HV is on, so the updates that withdraw an
+    # HV-on prompt must not cancel it (the window would refuse to close).
+    connect(qtbot, gui)
+    switch_on(qtbot, gui)
+    w = gui.window
+
+    def updates_arrive():
+        qtbot.wait(300)                              # statuses keep arriving
+        assert not gui.confirmer.revoked
+
+    gui.confirmer.while_open = updates_arrive
+    w.close()
+    assert gui.confirmer.questions[-1][0] == "Quit"
+    assert gui.confirmer.revocable is False
+    assert not w.isVisible()
+    assert not gui.sims[-1].supply_on
+
+
 def test_closing_with_hv_on_asks_and_switches_off(qtbot, gui):
     connect(qtbot, gui)
     switch_on(qtbot, gui)
@@ -412,6 +433,17 @@ def test_closing_with_hv_on_asks_and_switches_off(qtbot, gui):
 
 
 # --- dialogs and widgets -----------------------------------------------------
+
+def test_confirmer_ignores_revoke_when_not_revocable(qtbot):
+    confirmer = Confirmer()
+
+    def revoke_then_yes():
+        confirmer.revoke()
+        QApplication.activeModalWidget().done(QMessageBox.StandardButton.Yes)
+
+    QTimer.singleShot(100, revoke_then_yes)
+    assert confirmer.confirm(None, "Quit", "Really?", revocable=False) is True
+
 
 def test_confirmer_revoke_closes_the_box(qtbot):
     confirmer = Confirmer()

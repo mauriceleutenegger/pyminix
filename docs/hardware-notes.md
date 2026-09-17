@@ -247,3 +247,40 @@ rating, conversion factor and ranges (docs/protocol.md §2.2).
 
 Only this one controller has been read, and the decoding comes from a
 disassembly, so a configured rating is still kept as a cross-check.
+
+## 2026-09-17: shutdown paths and a 39-minute run
+
+Run record `20260917-140440_01300036.csv` (8 W) and the runs around it.
+The interlock is shorted here, so that path stays untested.
+
+- **Emergency stop** stopped the X-rays immediately (radiation monitor).
+- **USB unplugged with HV on:** X-rays stopped immediately. The controller
+  de-energizes by itself when the host goes away. The GUI showed a lost
+  controller with "check the tube physically", which is right: the
+  software cannot confirm anything over a dead link.
+- **Power cycle, then connect:** the temperature appeared within a couple
+  of seconds, so `configure_temperature_sensor()` works on a sensor that
+  has just lost its configuration.
+- **39 minutes at 40 kV / 200 µA (8 W):** the board rose from 26.00 to
+  27.75 °C, still rising. Fitting T(t) = T0 + A(1 − e^−t/τ) gives
+  **τ ≈ 17 min, A ≈ 1.8 °C at 8 W (0.23 °C/W)**, rms 0.09 °C; about
+  +2.3 °C at 10 W in equilibrium. Readback held at 39.82 ± 0.17 kV and
+  199.5 µA, every sample in range, band green, and MONX dropped 3301
+  times (about 1.4 per second at 200 µA).
+
+**Two software bugs this found, both fixed:**
+
+1. **Could not reconnect after unplugging USB.** pyftdi caches where a
+   device was last seen, and a replugged controller may be at a different
+   USB address; opening the stale entry fails with "no such device"
+   (seen in the log at 14:02:22). `list_controllers()` and
+   `FtdiTransport.open()` now clear that cache first, as pyftdi's own
+   documentation advises.
+2. **Closing the window with HV on did nothing.** The prompt appeared and
+   vanished at once, and the window stayed open with the X-rays on. The
+   window withdraws an HV-on confirmation whenever a status says HV can no
+   longer be switched on, and that logic was cancelling the quit prompt
+   too, since HV was on. Confirmations are now revocable only where that
+   is wanted; the quit prompt is not.
+
+The simulator's board heating now uses the fitted values.

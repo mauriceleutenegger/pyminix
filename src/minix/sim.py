@@ -16,8 +16,8 @@ part:
   noise with the supply on. A reading of 0 is normal with HV off.
 * A DS1722 that answers correctly only to the vendor clock sequence
   (§8.3, §8.4), with volatile config (0xE3 at start, as found), conversion
-  times, and slow board heating from tube power (a guess: no visible
-  heating was seen in minutes at 10 W, §10.8).
+  times, and slow board heating from tube power, fitted to a 39-minute
+  run at 8 W (§10.9).
 * Random values in ACBUS bits 4-7, which are not pins (§3).
 
 It is stricter than the hardware in one respect: anything the model does
@@ -63,7 +63,8 @@ DISCHARGE_TAIL_TAU_S = 2.5
 DISCHARGE_TAIL_FRACTION = 0.07
 # MONX at high emission current: low on this fraction of reads (§10.8
 # measured 7-46 % of 1 Hz samples at 190-200 µA; none at 100 µA).
-THERMAL_TAU_S = 600.0           # board heating time constant; not measured
+# Board heating fitted to a 39-minute run at 8 W (§10.9): 17 min, 0.23 °C/W.
+THERMAL_TAU_S = 1020.0
 MONX_FLICKER_ABOVE_UA = 185.0
 MONX_FLICKER_PROBABILITY = 0.2
 DS1722_CONFIG_AS_FOUND = 0xE3
@@ -85,7 +86,7 @@ class SimTransport:
         monx_delay_s: float = 0.3,
         device_type: int = 2,       # MX50.10: 50 kV, 10 W, as on sn 01300036
         ambient_c: float = 27.0,
-        heating_c_per_w: float = 0.5,
+        heating_c_per_w: float = 0.23,
         noise: bool = True,
     ):
         self._serial = serial
