@@ -175,7 +175,7 @@ A **fault** switches the high voltage off at once, shows a red banner, and waits
 | *HV enable bits still set after disable … check the tube physically* | The enable signals did not switch **off**. **Treat the tube as on** (§1). |
 | *only one HV enable bit reads set* / *HV enable bits read set while HV is off* / *HV enable bits dropped while HV is on* | The enable signals changed without being commanded. |
 | *3 ADC framing errors in a row* | The voltage and current readings could not be trusted. |
-| *connection failed* / *controller lost* | USB communication failed. The program closes the controller, and **Clear fault** returns to *disconnected*; then reconnect. If the message also says *could not be confirmed clear: check the tube physically*, **treat the tube as on**. |
+| *connection failed* / *controller lost* | USB communication failed. After an unplug the program may take about 10 s to release the device, during which the "no update from the controller" banner (below) can appear. The program closes the controller, and **Clear fault** returns to *disconnected*; then reconnect. If the message also says *could not be confirmed clear: check the tube physically*, **treat the tube as on**. |
 | *internal error* | A software problem. HV was switched off. Please report it with the log file (§9). |
 
 **Program-level banners** (not faults):
@@ -224,6 +224,7 @@ The simulated readings, ramp times and discharge follow measurements from the re
 |---|---|
 | *no controller found* | Check the USB cable and the controller's power, then press **Refresh**. Close any other program using the controller, such as the Amptek software. |
 | Connect ends in a *connection failed* fault | Clear the fault and connect again. If it keeps failing, unplug and replug the USB cable. |
+| USB was unplugged with X-rays on | The controller switches the high voltage off by itself, and a radiation monitor confirms it. The program reports a lost controller and says to check the tube, because it can no longer confirm anything. Plug the cable back in, press **Clear fault**, then **Connect**; no restart is needed. |
 | Asked for the power rating every time | Normal in simulation mode (§5.1). On the real unit, check that `~/.config/minix/units.toml` exists and is writable. |
 | The program won't start: *Configuration error* | The message names the problem in the configuration file. `config/units.example.toml` in the project shows the valid settings. |
 | Temperature shows — | It appears about 2 s after connecting. If it stays blank, see the log. |

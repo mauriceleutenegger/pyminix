@@ -284,3 +284,20 @@ The interlock is shorted here, so that path stays untested.
    is wanted; the quit prompt is not.
 
 The simulator's board heating now uses the fitted values.
+
+## 2026-09-17: both fixes verified on hardware
+
+Runs `20260917-170514` (USB unplugged with HV on, then reconnected) and
+`20260917-170605` (window closed with HV on).
+
+- **Unplug with HV on, then reconnect:** the X-rays stopped, the failsafe
+  writes failed as expected over the dead link, and the fault said to
+  check the tube. After replugging, **Clear fault** and **Connect**
+  worked in the same session (17:06:04), and HV switched on again. The
+  cache fix works.
+- **Closing with HV on:** the prompt stayed up, and answering it switched
+  HV off and closed the program (17:06:40-41).
+- **Note:** releasing a controller that has physically gone takes libusb
+  about 10 s (17:05:40 to 17:05:50). The worker is blocked meanwhile, so
+  the GUI's "no update from the controller" banner appears. Harmless, but
+  worth knowing; it is in the operator guide.
