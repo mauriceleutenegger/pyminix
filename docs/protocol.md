@@ -802,6 +802,17 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | `_RELEASE_1uA` build | Lowers `CurrentMin` to 0.999999 (50 kV table only). Not exercised. |
 | Thermal limits | No threshold exists in the reference. Any cutout is your own engineering judgement. |
 
+### 12.1 Questions for Amptek
+
+The open items above that only the vendor can settle, most useful first:
+
+1. **What does MONX ("MON MINIX RDY") signal?** It asserts about a second after switching on, but at emission currents of about 190 µA and above it drops briefly and often — around 1.4 times a second at 200 µA — while the high voltage and current readings stay on target (§7.2, §10.8). Is that expected, does it indicate anything about the tube, and is running near 200 µA for long periods a problem?
+2. **Is the controller model really carried on ACBUS1 and ACBUS2, as `ReadMinixOemMxDeviceType` suggests** (§2.2)? The decoding was recovered from a disassembly of `MiniX.dll` and checked on one unit (sn `01300036`, reading MX50.10). Is it stable across units and firmware versions? And is a non-OEM Mini-X controller always 4 W, or can it be a 10 W unit that reports the same type 3?
+3. **Does the controller cut the high voltage by itself when the interlock opens**, independently of the host? Unplugging USB with HV on does stop the X-rays (§10.9), but the interlock path could not be tested on this unit, where it is shorted.
+4. **Is a unit's power rating recorded anywhere it can be read** — the FT2232 EEPROM user area, or against the serial number in Amptek's records?
+5. **Is the 50 mW safety margin meant to scale with the rating?** It is 1.25 % of a 4 W unit but 0.5 % of a 10 W one (§6.1.1).
+6. **Lower priority:** which converter is fitted (it behaves like an MCP3202/LTC1298 rather than the MAX186 the source names, §6.3); whether the clock really is inverted between the FT2232 and the ADC and DS1722 (§1, §8.3); and why the reference runs its startup sequence twice (§5.2).
+
 Settled in this revision: `NumAVE` = 7, `ErrTestDelay` = 7 (with its actual meaning, §6.4), `indInterlockClear` = 3, the range tolerances (10 % / 5 %), the monitor period (1000 ms), the NSI and non-NSI setpoint timing (§9.2), and the presence of the TSCS leading assert (§8.3).
 
 ---
