@@ -7,7 +7,7 @@
 | Document date | 13 August 2026; revised 17 September 2026 |
 | Reference source | Amptek Mini-X DLL source, `MiniXDlg.cpp` / `MiniXDlg.h`, board revision C0. Kept locally in `reference/`; not in the repository, because it is proprietary. |
 | Validated on | Mini-X Controller, serial `01300036`, 50 kV board, 10 W rating (from the unit's hardware documentation, not from software); macOS, pyftdi |
-| Status | DAC, ADC, GPIO and HV enable confirmed on hardware (§10). The DS1722 read and configuration write are confirmed (§8.4). Nothing has been exercised near the power limit (§10.5). |
+| Status | DAC, ADC, GPIO, HV enable and the DS1722 confirmed on hardware (§8.4, §10). The full sequences, including HV on and off with X-ray output confirmed by a radiation monitor, have been run at 15 kV / 10–15 µA (§10.7). Nothing has been exercised near the power limit (§10.5). |
 
 **About this revision.** The first version was reconstructed from an excerpt of `MiniXDlg.cpp`. This revision checks it against the full source and against hardware runs of this project's code; the run log is in [hardware-notes.md](hardware-notes.md). §13 lists what changed. Where it matters, the text says whether a statement comes from the **source**, from **hardware** observation, or is this project's **recommendation**. A recommendation is not vendor behaviour.
 
@@ -682,7 +682,7 @@ At 15 kV / 10 µA the HV channel read 1204 counts against 1200 commanded (+0.33 
 
 ### 10.5 Rating provenance
 
-The 10 W rating of serial `01300036` comes from the unit's hardware documentation, **not** from the device or the reference software, neither of which reports it. The only energized measurement so far is 15 kV / 10 µA: 150 mW, 1.5 % of the rating. Nothing in this document validates behaviour near either variant's power limit, and the clamp arithmetic (§9.1) and banding (§6.4) are unexercised above 150 mW.
+The 10 W rating of serial `01300036` comes from the unit's hardware documentation, **not** from the device or the reference software, neither of which reports it. The energized measurements so far are at 15 kV with 10 and 15 µA: at most 225 mW, 2.3 % of the rating (§10.1, §10.7). Nothing in this document validates behaviour near either variant's power limit, and the clamp arithmetic (§9.1) and banding (§6.4) are unexercised above 225 mW.
 
 ### 10.6 Read-only checks (September 2026)
 
@@ -695,6 +695,15 @@ These runs used this project's code, with HV off throughout:
 - The DS1722 results are in §8.4.
 
 The full log is in [hardware-notes.md](hardware-notes.md).
+
+### 10.7 Energized operation (September 2026)
+
+This project's GUI switched HV on three times at 15 kV, with 15 µA and 10 µA, including setpoint changes while on. A radiation monitor confirmed X-ray production. Every sequence (§9.2) completed without a fault or warning.
+
+- **Ramp.** Both monitors were within range at the first settle check, 0.5 s after each DAC write; HV read 97 % of the setpoint. A full switch-on on this NSI unit takes 1.8 s.
+- **MONX** was asserted at the first sample after the enables were set, about 1 s later, and the check after the ramp never failed (§7.2).
+- **Noise with HV on** is about 15 counts (σ) on both channels: ±0.18 kV and ±0.8 µA, roughly four times the idle noise. Means were within 8 counts of the setpoints, and every sample was inside the ±10 % + 1 band (§6.4). Single readings are noisy enough that the running average matters for display.
+- **After switch-off** the HV monitor falls fast, then discharges slowly: from 15 kV it read 1.1 kV after 1 s, 0.5 kV after 3 s and about 0.1 kV after 6 s. The reference's 7 s wait before testing HV-off readings (§6.4) covers this tail.
 
 ---
 
@@ -734,7 +743,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
 | ACBUS2 (`0x04`) | Always reads set. Function unknown. |
 | Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source, not validated. **Test it deliberately before relying on it.** |
-| MONX assert time | Not measured, nor whether MONX asserts with zero setpoints. The 1 s timeout used by this project is a guess. |
+| MONX timing | Asserted within about 1 s of enabling at 15 kV (§10.7), and the 1 s check after the ramp never failed. Whether MONX asserts with zero setpoints is unknown. |
 | Double startup (§5.2) | Present in source; reason unknown. |
 | Non-NSI (Comet) path | Setpoint correction and timing (§9.2) are from source only; no non-NSI unit tested. |
 | Power overshoot through rounding | Found by source analysis (§9.1); not exercised. |
@@ -780,3 +789,4 @@ Additions:
 - **§9.1** Power overshoot through rounding, up to about 4.05 W on a 4 W unit.
 - **§9.2** Failsafe on any I/O error, and DACs left at their minima on close.
 - **§10.6** The September read-only checks.
+- **§10.7** The first energized session through this project's software: ramp and MONX timing, noise with HV on, and the discharge tail after switch-off.

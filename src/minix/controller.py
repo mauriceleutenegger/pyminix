@@ -255,7 +255,6 @@ class Session:
         self._hv_switched(now)
         self._next_poll = dict.fromkeys(self._next_poll, now)
         self._next_poll["temp"] = now + FIRST_TEMPERATURE_DELAY_S
-        log.info("connected: %s (rating source: %s)", unit.describe(), unit.source or "unknown")
         self._event(Level.INFO, "connected", unit.describe(), serial=serial,
                     watt_max_w=unit.watt_max_w, rating_source=unit.source,
                     safety_margin_w=unit.safety_margin_w)

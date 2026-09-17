@@ -8,9 +8,11 @@ part:
 
 * DAC registers; HV enables gated by the interlock; a supply that settles
   exponentially toward the DAC setpoints; MONX asserting after a delay.
+  After switch-off the HV falls quickly, then discharges slowly over a
+  few seconds.
 * ADC replies in the real framing (null bit, trailing B1-B3 repeat), with
-  the offsets and noise seen on hardware (§10.2, §10.3). A reading of 0 is
-  normal with HV off.
+  the offsets and noise seen on hardware (§10.2, §10.3, §10.7): more
+  noise with the supply on. A reading of 0 is normal with HV off.
 * A DS1722 that answers correctly only to the vendor clock sequence
   (§8.3, §8.4), with volatile config (0xE3 at start, as found), conversion
   times, and board heating from tube power.
@@ -45,10 +47,16 @@ from .transport import TransportError
 
 log = logging.getLogger(__name__)
 
-# Observed on sn 01300036 (§10.2, §10.3, docs/hardware-notes.md).
+# Observed on sn 01300036 (§10.2, §10.3, §10.7, docs/hardware-notes.md).
 HV_OFFSET_COUNTS = 5.0
 CURRENT_OFFSET_COUNTS = 8.0
-NOISE_COUNTS = 4.0
+NOISE_COUNTS = 4.0              # supply off
+NOISE_ON_COUNTS = 15.0          # supply on: 14-16 counts measured on 2026-09-17
+SETTLE_TAU_S = 0.15             # measured ≈97 % within 0.5 s of a DAC write
+# HV after switch-off: 1.1 kV after 1 s, 0.5 kV after 3 s from 15 kV.
+DISCHARGE_TAU_S = 0.3
+DISCHARGE_TAIL_TAU_S = 2.5
+DISCHARGE_TAIL_FRACTION = 0.07
 DS1722_CONFIG_AS_FOUND = 0xE3
 DS1722_TEMP_AS_FOUND_C = 25.0
 
@@ -64,7 +72,7 @@ class SimTransport:
         hv_factor: float = p.HV_FACTOR_50KV,
         clock: Callable[[], float] = time.monotonic,
         seed: int | None = 0,
-        settle_tau_s: float = 0.3,
+        settle_tau_s: float = SETTLE_TAU_S,
         monx_delay_s: float = 0.3,
         ambient_c: float = 27.0,
         heating_c_per_w: float = 0.5,
@@ -97,6 +105,8 @@ class SimTransport:
         self.current_dac = 0
         self.kv = 0.0
         self.ua = 0.0
+        self._kv_tail = 0.0             # slowly discharging part of kv after switch-off
+        self._was_on = False
         self._enabled_since: float | None = None
         self._last_update = clock()
 
@@ -336,7 +346,7 @@ class SimTransport:
             volts, offset = self.ua / p.CURRENT_FACTOR, CURRENT_OFFSET_COUNTS
         counts = volts / p.VREF * p.DAC_ADC_SCALE + offset
         if self.noise:
-            counts += self._rng.gauss(0.0, NOISE_COUNTS)
+            counts += self._rng.gauss(0.0, NOISE_ON_COUNTS if self.supply_on else NOISE_COUNTS)
         return min(p.COUNTS_MAX, max(0, round(counts)))
 
     def _ds1722(self, cmd: Command) -> bytes:
@@ -410,13 +420,19 @@ class SimTransport:
         self._last_update = now
         if dt == 0.0:
             return
-        if self.supply_on:
-            kv_target, ua_target = self.hv_setpoint_kv, self.current_setpoint_ua
-        else:
-            kv_target, ua_target = 0.0, 0.0
+        on = self.supply_on
+        if on != self._was_on:
+            self._was_on = on
+            self._kv_tail = 0.0 if on else self.kv * DISCHARGE_TAIL_FRACTION
         k = 1.0 - math.exp(-dt / self.settle_tau_s) if self.settle_tau_s > 0 else 1.0
-        self.kv += (kv_target - self.kv) * k
-        self.ua += (ua_target - self.ua) * k
+        if on:
+            self.kv += (self.hv_setpoint_kv - self.kv) * k
+            self.ua += (self.current_setpoint_ua - self.ua) * k
+        else:
+            fast = (self.kv - self._kv_tail) * math.exp(-dt / DISCHARGE_TAU_S)
+            self._kv_tail *= math.exp(-dt / DISCHARGE_TAIL_TAU_S)
+            self.kv = fast + self._kv_tail
+            self.ua -= self.ua * k
         self.max_actual_mw = max(self.max_actual_mw, self.kv * self.ua)
 
     def _update_supply(self) -> None:

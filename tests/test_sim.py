@@ -7,7 +7,7 @@ from minix.device import (
     HvEnableError, InterlockOpenError, MiniX, NotInitializedError, TemperatureError,
     decode_temperature_c,
 )
-from minix.sim import SimFaults, SimHarness, SimTransport
+from minix.sim import SETTLE_TAU_S, SimFaults, SimHarness, SimTransport
 from minix.transport import TransportError
 
 
@@ -114,9 +114,9 @@ def test_supply_follows_setpoints_only_when_enabled(sim, dev, clock):
     assert (sim.kv, sim.ua) == (0.0, 0.0)
     dev.set_hv_enable(True)
     clock.advance(5)
-    hv, ua = monitors(dev)
-    assert hv == pytest.approx(30, abs=0.5)
-    assert ua == pytest.approx(50, abs=1.0)
+    readings = [monitors(dev) for _ in range(100)]
+    assert sum(r[0] for r in readings) / 100 == pytest.approx(30, abs=0.2)
+    assert sum(r[1] for r in readings) / 100 == pytest.approx(50.4, abs=0.4)
 
 
 def test_readback_matches_the_hardware_measurement(dev, clock):
@@ -130,9 +130,12 @@ def test_readback_matches_the_hardware_measurement(dev, clock):
 
 def test_supply_settles_gradually(sim, dev, clock):
     energize(dev, clock, kv=40, ua=20, settle=0.0)
-    clock.advance(0.3)                               # one time constant
+    clock.advance(SETTLE_TAU_S)                      # one time constant
     sim.advance()
     assert sim.kv == pytest.approx(40 * (1 - 1 / 2.718281828), rel=0.01)
+    clock.advance(0.5 - SETTLE_TAU_S)
+    sim.advance()
+    assert sim.kv > 0.95 * 40         # measured ≈97 % within 0.5 s (one noisy sample)
 
 
 def test_monx_asserts_after_delay_and_drops_with_enable(sim, dev, clock):
@@ -143,12 +146,31 @@ def test_monx_asserts_after_delay_and_drops_with_enable(sim, dev, clock):
     assert not dev.set_hv_enable(False).tube_ready
 
 
-def test_hv_off_decays(sim, dev, clock):
+def test_hv_off_decays_with_a_slow_tail(sim, dev, clock):
+    energize(dev, clock)                             # 15 kV
+    dev.set_hv_enable(False)
+    measured = {1: 1.1, 3: 0.46}                     # kV after switch-off, 2026-09-17
+    elapsed = 0
+    for t, kv in measured.items():
+        clock.advance(t - elapsed)
+        elapsed = t
+        sim.advance()
+        assert sim.kv == pytest.approx(kv, abs=0.25)
+    assert sim.ua < 0.1
+    clock.advance(20)
+    sim.advance()
+    assert sim.kv < 0.01
+
+
+def test_tail_does_not_linger_after_switching_on_again(sim, dev, clock):
     energize(dev, clock)
     dev.set_hv_enable(False)
-    clock.advance(3)
+    clock.advance(1)
+    energize(dev, clock, kv=20, ua=10)
+    dev.set_hv_enable(False)
+    clock.advance(20)
     sim.advance()
-    assert sim.kv < 0.1 and sim.ua < 0.1
+    assert sim.kv < 0.01
 
 
 # --- interlock ---------------------------------------------------------------
@@ -355,7 +377,7 @@ def test_harness_applies_changes_to_the_current_simulator():
     for name in SimFaults.names():
         harness.set_fault(name, getattr(SimFaults(), name))
     assert (sim.interlock_closed, sim.monx_delay_s, sim.settle_tau_s,
-            sim.stuck_enable_readback, sim.fail_io) == (True, 0.02, 0.3, None, False)
+            sim.stuck_enable_readback, sim.fail_io) == (True, 0.02, SETTLE_TAU_S, None, False)
 
 
 def test_harness_rejects_unknown_faults():

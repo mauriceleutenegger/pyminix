@@ -195,12 +195,13 @@ def test_energize(session, clock, sim, rec):
     run(session, clock, 5)
     status = session.status()
     assert status.state is State.ON and status.enables_on and status.tube_ready
-    assert status.kv == pytest.approx(15, abs=0.5)
-    assert status.ua == pytest.approx(10.4, abs=0.5)
-    assert status.kv_average == pytest.approx(15, abs=0.3)
+    # single readings are noisy (σ ≈ 15 counts on hardware); averages less so
+    assert status.kv == pytest.approx(15, abs=0.8)
+    assert status.kv_average == pytest.approx(15, abs=0.4)
+    assert status.ua_average == pytest.approx(10.4, abs=1.0)
     assert status.range.testing and status.range.ok
     assert status.band is PowerBand.NORMAL
-    assert status.power_mw == pytest.approx(156, abs=15)
+    assert status.power_mw == pytest.approx(156, abs=45)
     assert sim.violations == []
 
 

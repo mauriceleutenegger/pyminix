@@ -129,3 +129,40 @@ from `00h`) and checks the config byte on every reading.
   when `device_check.py` ran, so `device.py`'s own write has not been
   tested on its own. Its bytes match the probe's. The config is volatile, so
   the next run after a power-up will test it.
+
+## 2026-09-17: first energized session through the GUI
+
+`minix-gui`, run record `20260917-113354_01300036.csv`. Three HV-on periods
+at 15 kV, with 15 µA and 10 µA, including setpoint changes while on. X-ray
+production was confirmed with a radiation monitor. Every switch-on and
+switch-off completed without a fault or warning.
+
+- **Ramp.** At the first settle check, 0.5 s after the DAC write, HV read
+  14.58 kV (97 %) and the current was also within range. A full switch-on
+  takes 1.8 s: the NSI plan's fixed pauses plus one settle check per
+  channel.
+- **MONX** was already asserted at the first recorded sample after the
+  enables were set (about 1 s later). The 1 s check after the ramp never
+  failed. Whether MONX asserts with zero setpoints is still unknown.
+- **Readback with HV on** (1 Hz samples, steady state):
+
+  | setpoint | kV mean | kV σ | µA mean | µA σ |
+  |---|---|---|---|---|
+  | 15 kV, 10 µA (n=10) | 14.90 | 0.17 (14 counts) | 10.32 | 0.82 (16 counts) |
+  | 15 kV, 15 µA (n=36) | 14.97 | 0.18 (14 counts) | 15.07 | 0.77 (15 counts) |
+
+  Single readings are noisy. With the supply on, the noise is about four
+  times the idle noise; the 7-sample average steadies the display. Every
+  sample was inside the ±10 % + 1 band.
+- **Idle, before any HV:** mean 8.7 counts (HV) and 8.5 counts (current),
+  maxima 24 and 23 counts.
+- **HV after switch-off** (from 15 kV): 1.1 kV after 1 s, 0.85 after 2 s,
+  0.46 after 3 s, about 0.1 after 6 s. A fast fall followed by a slow
+  discharge tail. The reference's 7 s wait before testing HV-off readings
+  covers it.
+- **Board temperature:** 27.2 °C falling to 26.9 °C; no heating visible at
+  0.15–0.23 W.
+
+The simulator was calibrated to these results: ramp time constant 0.15 s,
+noise 15 counts with the supply on, and a two-part discharge (7 % of the
+voltage decaying with a 2.5 s time constant).
