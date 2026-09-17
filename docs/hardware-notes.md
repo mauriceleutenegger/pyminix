@@ -1,5 +1,10 @@
 # Hardware notes
 
+**Installation note.** On this unit (serial 01300036) the interlock input
+is shorted: it always reads closed, and it provides no protection. The
+controller sits inside an enclosure that makes it hard to reach, so the
+interlock-open behaviour cannot be tested here (docs/protocol.md §12).
+
 Findings from running this project's code against the Mini-X controller
 (serial 01300036, 50 kV, 10 W), in date order. Findings up to 2026-09-17
 are incorporated in [protocol.md](protocol.md); this file is the log behind

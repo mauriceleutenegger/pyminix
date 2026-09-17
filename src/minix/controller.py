@@ -358,7 +358,7 @@ class Session:
                 self._dev.initialize()
             gpio = self._dev.read_gpio()
         except (*_DEVICE_LOST, DeviceError) as exc:
-            self._lose_device(f"device not usable: {exc}")
+            self._lose_device(f"controller lost: not usable: {exc}")
             return
         self._gpio = gpio
         if not gpio.hv_disabled:
@@ -401,7 +401,7 @@ class Session:
         except _Fault as exc:
             self._enter_fault(str(exc))
         except _DEVICE_LOST as exc:
-            self._lose_device(str(exc))
+            self._lose_device(f"controller lost: {exc}")
         except DeviceError as exc:
             self._enter_fault(str(exc))
 
@@ -479,7 +479,7 @@ class Session:
             self._enter_fault(str(exc))
             return False
         except _DEVICE_LOST as exc:
-            self._lose_device(str(exc))
+            self._lose_device(f"controller lost: {exc}")
             return False
         except DeviceError as exc:
             self._enter_fault(str(exc))
@@ -575,7 +575,7 @@ class Session:
         self._dac = DacSetpoints.zero(self._unit)
         self._hv_switched(self._clock())
         if not self._dev.initialized:
-            self._lose_device("emergency stop: the device stopped responding")
+            self._lose_device("controller lost: it stopped responding during an emergency stop")
             return
         if self._state is State.FAULT:
             self._event(Level.ERROR, "estop", "emergency stop: failsafe applied; fault remains")
@@ -730,7 +730,7 @@ class Session:
         self._set_state(State.FAULT)
         self._event(Level.ERROR, "fault", message)
         if dev is not None and not dev.initialized:
-            self._lose_device("the device stopped responding")
+            self._lose_device("controller lost: it stopped responding")
 
     def _lose_device(self, message: str) -> None:
         confirmed = self._close_device() if self._dev is not None else True

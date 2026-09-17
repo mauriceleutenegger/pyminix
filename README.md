@@ -12,7 +12,7 @@ source (e.g. "§9.2") point to protocol.md.
 | Path | Contents |
 |---|---|
 | `src/minix/` | The package. `transport.py`/`device.py` know MPSSE but not safety; `policy/` is pure functions with no I/O; `controller.py` owns the device thread; `ui/` knows nothing about the protocol. |
-| `tools/` | Standalone hardware scripts. `device_check.py`, `ds1722_probe.py` and `probe.py` never enable HV; `adcsweep.py --enable-hv` **energizes the tube**. |
+| `tools/` | Standalone hardware scripts. `device_check.py`, `ds1722_probe.py` and `probe.py` never enable HV. `adcsweep.py` is historical; its HV-on mode is superseded by `minix-gui` and needs an explicit extra flag. |
 | `tests/` | pytest suite. Uses a fake transport and the simulator (`minix.sim`); never touches hardware. |
 | `config/` | `units.example.toml`. Copy to `units.toml` (git-ignored) or `~/.config/minix/units.toml`. |
 | `legacy/` | Earlier prototypes, git-ignored and kept only on disk. **Not trustworthy — do not import or run.** |
@@ -30,6 +30,10 @@ All dependencies, including libusb, come from conda-forge via
 `environment.yml` and `pyproject.toml` in sync.
 
 ## Running
+
+Operators: see the **[operator guide](docs/operator-guide.md)** (PDF:
+`docs/operator-guide.pdf`) for safety notes, normal operation, and what
+every indicator, warning and fault means.
 
     minix-gui --sim           # simulated controller, with a fault-injection panel
     minix-gui                 # real hardware

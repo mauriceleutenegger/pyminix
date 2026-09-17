@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 """
-minix_adcsweep.py -- determine whether the Mini-X ADC read path works, and
+adcsweep.py -- determine whether the Mini-X ADC read path works, and
 which MPSSE clock edges the DAC and ADC actually require.
+
+HISTORICAL. This is the August 2026 script that established the ADC
+framing (docs/protocol.md §10.1). It keeps its own copy of the protocol.
+
+*** STAGE B (--enable-hv) IS SUPERSEDED. To switch the tube on, use
+*** minix-gui. This script bypasses the project's safety layer: no
+*** configured power rating (it assumes 4 W), no interlock or MONX
+*** monitoring while on, and no run record. It is kept only to reproduce
+*** the original measurement.
 
   Stage A (default, read-only): sweep read opcodes with HV OFF. Baseline.
   Stage B (--enable-hv):        set a setpoint, ENERGIZE, re-sweep, compare.
@@ -9,10 +18,8 @@ which MPSSE clock edges the DAC and ADC actually require.
 *** STAGE B ENERGIZES THE X-RAY TUBE. Default 15 kV / 10 uA = 150 mW of a
 *** 4 W limit. HV is disabled in a finally block on every exit path.
 
-    python minix_adcsweep.py
-    python minix_adcsweep.py --enable-hv
-    python minix_adcsweep.py --enable-hv --kv 30 --ua 50
-    python minix_adcsweep.py --enable-hv --dac-opcode 0x11
+    python tools/adcsweep.py                       # stage A, read-only
+    python tools/adcsweep.py --enable-hv --i-know-this-is-superseded
 """
 
 from __future__ import annotations
@@ -236,9 +243,17 @@ def main() -> int:
                     help="seconds to settle after enabling HV")
     ap.add_argument("--dac-opcode", type=lambda s: int(s, 0), default=0x10,
                     help="0x10 (default, per source) or 0x11")
+    ap.add_argument("--i-know-this-is-superseded", action="store_true",
+                    help="required with --enable-hv; use minix-gui instead")
     args = ap.parse_args()
 
+    if args.enable_hv and not args.i_know_this_is_superseded:
+        return _die("--enable-hv is superseded: use minix-gui to switch the tube on. "
+                    "To reproduce the August 2026 measurement anyway, add "
+                    "--i-know-this-is-superseded.")
     if args.enable_hv:
+        print("\n  WARNING: superseded mode. This bypasses the minix safety layer "
+              "(rating, interlock and MONX monitoring, run record).")
         if not (HV_MIN <= args.kv <= HV_MAX):
             return _die(f"kv {args.kv} outside {HV_MIN}-{HV_MAX}")
         if not (UA_MIN <= args.ua <= UA_MAX):

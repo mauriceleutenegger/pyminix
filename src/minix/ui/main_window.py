@@ -68,7 +68,6 @@ class MainWindow(QMainWindow):
         self._status_received_at = clock()
         self._last_display = -float("inf")
         self._unit: UnitConfig | None = None
-        self._pending_connect: str | None = None
 
         self._set_title("Mini-X controller")
         self._build()

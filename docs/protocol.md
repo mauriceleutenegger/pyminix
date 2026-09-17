@@ -754,7 +754,7 @@ These items are not settled; they are listed so that nobody mistakes them for fa
 | ADC part number | Behaves like an MCP3202/LTC1298-type part, not a MAX186 (§6.3). Unconfirmed; irrelevant to the implementation. |
 | Clock inversion on the board | Inferred from source comments and consistent with the DS1722 results (§8.4); not measured. |
 | ACBUS2 (`0x04`) | Always reads set. Function unknown. |
-| Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source, not validated. **Test it deliberately before relying on it.** |
+| Interlock-open behaviour | Never exercised on hardware. The state machine is taken from source and tested only against the simulator. **Test it deliberately before relying on it.** On sn `01300036` the interlock is shorted, so it cannot be tested there. |
 | MONX meaning | Asserts within about 1 s of enabling (§10.7) but flickers at emission currents of about 190 µA and above while the output is unaffected (§10.8). What it signals is unknown, as is whether it asserts with zero setpoints. A question for Amptek. |
 | Double startup (§5.2) | Present in source; reason unknown. |
 | Non-NSI (Comet) path | Setpoint correction and timing (§9.2) are from source only; no non-NSI unit tested. |
