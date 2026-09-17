@@ -14,12 +14,11 @@ source     = "hardware documentation, verified 2026-08-13"
 # Override only with a documented reason.
 
 [safety]
-safety_margin_w   = 0.050   # absolute, as in the reference (§6.1.1)
-err_test_delay_s  = 1.75    # range fault debounce (§6.4); was 7 cycles
-interlock_clear_s = 0.75    # delay before controls re-enable (§7.3); was 3 cycles
-monx_timeout_s    = 1.0     # tube-ready must assert within this after enabling (§7.2)
-tol_coarse        = 0.10    # range-check tolerances (§6.4)
-tol_fine          = 0.05
+safety_margin_w    = 0.050  # absolute, as in the reference (§6.1.1)
+interlock_clear_s  = 3.0    # before controls re-enable; reference: 3 cycles of its 1 s loop (§7.3)
+monx_timeout_s     = 1.0    # tube-ready must assert within this after enabling (§7.2)
+tol_coarse         = 0.10   # range-check tolerances (§6.4)
+tol_fine           = 0.05
 
 [polling]
 gpio_hz    = 10.0   # interlock, MONX, enable readback

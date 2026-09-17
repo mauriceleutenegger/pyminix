@@ -2,8 +2,10 @@
 
 PySide6 control GUI for the Amptek Mini-X X-ray tube controller (FT2232C/D, MPSSE).
 
-The protocol is documented in [docs/protocol.md](docs/protocol.md). Section
-references in the source (e.g. "§9.2") point there.
+The protocol is documented in [docs/protocol.md](docs/protocol.md) (PDF build:
+`docs/protocol.pdf`); the dated log of hardware runs behind it is
+[docs/hardware-notes.md](docs/hardware-notes.md). Section references in the
+source (e.g. "§9.2") point to protocol.md.
 
 ## Layout
 

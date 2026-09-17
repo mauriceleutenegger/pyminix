@@ -6,8 +6,11 @@ dist/
 build/
 .pytest_cache/
 *~
+*.swp
 .DS_Store
 # per-machine unit configuration; see config/units.example.toml
 config/units.toml
 # earlier untrusted prototypes, kept on disk only; see legacy/README.md
 legacy/
+# proprietary vendor source, kept on disk only
+reference/

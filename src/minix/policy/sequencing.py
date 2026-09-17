@@ -1,6 +1,5 @@
 """DAC write ordering (§9.2).
 
-Plans for setpoint transitions (current first when raising voltage,
-voltage first when lowering), energizing, and de-energizing, with their
-settling delays.
+Plans for setpoint transitions, energizing and de-energizing: the order of
+the two DAC writes, the enable changes, and the settling between steps.
 """
